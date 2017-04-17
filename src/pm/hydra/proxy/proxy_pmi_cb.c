@@ -262,14 +262,14 @@ static HYD_status fn_get_appnum(int fd, struct proxy_kv_hash *pmi_args)
 {
     int skipped = 0, i;
     struct HYD_exec *exec;
-    struct proxy_int_hash *hash;
+    struct HYD_int_hash *hash;
     struct HYD_string_stash stash;
     char *cmd;
     HYD_status status = HYD_SUCCESS;
 
     HYD_FUNC_ENTER();
 
-    MPL_HASH_FIND_INT(proxy_params.immediate.process.pmi_fd_hash, &fd, hash);
+    MPL_HASH_FIND_INT(proxy_params.immediate.process.fd_pmi_hash, &fd, hash);
 
     for (exec = proxy_params.all.complete_exec_list, i = 0; exec; exec = exec->next, i++) {
         if (skipped + exec->proc_count <= hash->val) {
@@ -416,13 +416,14 @@ HYD_status proxy_barrier_in(int fd, struct proxy_kv_hash *pmi_args)
 {
     struct MPX_cmd cmd;
     int sent, closed;
+    static int barrier_ref_count = 0;
     HYD_status status = HYD_SUCCESS;
 
-    proxy_params.root.barrier_ref_count++;
+    barrier_ref_count++;
 
-    if (proxy_params.root.barrier_ref_count ==
+    if (barrier_ref_count ==
         proxy_params.immediate.proxy.num_children + proxy_params.immediate.process.num_children) {
-        proxy_params.root.barrier_ref_count = 0;
+        barrier_ref_count = 0;
 
         status = flush_put_cache();
         HYD_ERR_POP(status, "error flushing pmi put cache\n");
@@ -447,7 +448,7 @@ HYD_status proxy_barrier_in(int fd, struct proxy_kv_hash *pmi_args)
 HYD_status proxy_barrier_out(int fd, struct proxy_kv_hash *pmi_args)
 {
     char *cmd;
-    struct proxy_int_hash *hash, *tmp;
+    struct HYD_int_hash *hash, *tmp;
     HYD_status status = HYD_SUCCESS;
 
     HYD_FUNC_ENTER();
@@ -455,7 +456,7 @@ HYD_status proxy_barrier_out(int fd, struct proxy_kv_hash *pmi_args)
     /* we need to read the actual kvcache from upstream */
     cmd = MPL_strdup("cmd=barrier_out\n");
 
-    MPL_HASH_ITER(hh, proxy_params.immediate.process.pmi_fd_hash, hash, tmp) {
+    MPL_HASH_ITER(hh, proxy_params.immediate.process.fd_pmi_hash, hash, tmp) {
         status = send_cmd_downstream(hash->key, cmd);
         HYD_ERR_POP(status, "error sending PMI response\n");
     }
@@ -536,7 +537,7 @@ static HYD_status fn_finalize(int fd, struct proxy_kv_hash *pmi_args)
 
 static HYD_status fn_abort(int fd, struct proxy_kv_hash *pmi_args)
 {
-    struct proxy_int_hash *hash, *tmp;
+    struct HYD_int_hash *hash, *tmp;
     HYD_status status = HYD_SUCCESS;
 
     HYD_FUNC_ENTER();

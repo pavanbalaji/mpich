@@ -69,7 +69,8 @@ struct mpiexec_params_s {
     /* primary envs are force-propagated.  secondary envs are never
      * overwritten. */
     struct {
-        struct HYD_env *list;
+        int envcount;
+        char **env;
         int serialized_buf_len;
         void *serialized_buf;
     } primary, secondary;
@@ -77,6 +78,8 @@ struct mpiexec_params_s {
     char *prepend_pattern;
     char *outfile_pattern;
     char *errfile_pattern;
+
+    int pid_ref_count;
 };
 
 struct mpiexec_pg {
@@ -90,10 +93,10 @@ struct mpiexec_pg {
 
     int num_downstream;
     struct {
-        int *fd_stdin;
-        int *fd_stdout;
-        int *fd_stderr;
-        int *fd_control;
+        int fd_stdin;
+        struct HYD_int_hash *fd_stdout_hash;
+        struct HYD_int_hash *fd_stderr_hash;
+        struct HYD_int_hash *fd_control_hash;
         int *proxy_id;
         int *pid;
 
@@ -111,6 +114,7 @@ struct mpiexec_pg {
 
 extern struct mpiexec_pg *mpiexec_pg_hash;
 extern struct mpiexec_params_s mpiexec_params;
+extern int *contig_pids;
 
 HYD_status mpiexec_get_parameters(char **t_argv);
 HYD_status mpiexec_pmi_barrier(struct mpiexec_pg *pg);

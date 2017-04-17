@@ -30,10 +30,9 @@ HYD_status mpiexec_alloc_pg(struct mpiexec_pg **pg, int pgid)
     tmp->exec_list = NULL;
 
     tmp->num_downstream = -1;
-    tmp->downstream.fd_stdin = NULL;
-    tmp->downstream.fd_stdout = NULL;
-    tmp->downstream.fd_stderr = NULL;
-    tmp->downstream.fd_control = NULL;
+    tmp->downstream.fd_stdout_hash = NULL;
+    tmp->downstream.fd_stderr_hash = NULL;
+    tmp->downstream.fd_control_hash = NULL;
     tmp->downstream.proxy_id = NULL;
     tmp->downstream.pid = NULL;
     tmp->downstream.kvcache = NULL;
@@ -102,7 +101,7 @@ void mpiexec_free_params(void)
 
 void mpiexec_print_params(void)
 {
-    struct HYD_env *env;
+    int i;
 
     HYD_FUNC_ENTER();
 
@@ -119,14 +118,14 @@ void mpiexec_print_params(void)
     HYD_PRINT_NOPREFIX(stdout, "\n");
     HYD_PRINT_NOPREFIX(stdout, "  Primary environment:\n");
     HYD_PRINT_NOPREFIX(stdout, "  -------------------\n");
-    for (env = mpiexec_params.primary.list; env; env = env->next)
-        HYD_PRINT_NOPREFIX(stdout, "    %s=%s\n", env->env_name, env->env_value);
+    for (i = 0; i < mpiexec_params.primary.envcount; i++)
+        HYD_PRINT_NOPREFIX(stdout, "    %s\n", mpiexec_params.primary.env[i]);
 
     HYD_PRINT_NOPREFIX(stdout, "\n");
     HYD_PRINT_NOPREFIX(stdout, "  Secondary environment:\n");
     HYD_PRINT_NOPREFIX(stdout, "  ---------==----------\n");
-    for (env = mpiexec_params.secondary.list; env; env = env->next)
-        HYD_PRINT_NOPREFIX(stdout, "    %s=%s\n", env->env_name, env->env_value);
+    for (i = 0; i < mpiexec_params.secondary.envcount; i++)
+        HYD_PRINT_NOPREFIX(stdout, "    %s\n", mpiexec_params.secondary.env[i]);
 
     HYD_PRINT_NOPREFIX(stdout, "\n\n");
 

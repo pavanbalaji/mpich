@@ -45,13 +45,15 @@ struct mpiexec_params_s mpiexec_params = {
     .envlist = NULL,
 
     .primary = {
-        .list = NULL,
+        .envcount = 0,
+        .env = NULL,
         .serialized_buf_len = 0,
         .serialized_buf = NULL,
     },
 
     .secondary = {
-        .list = NULL,
+        .envcount = 0,
+        .env = NULL,
         .serialized_buf_len = 0,
         .serialized_buf = NULL,
     },
@@ -59,10 +61,14 @@ struct mpiexec_params_s mpiexec_params = {
     .prepend_pattern = NULL,
     .outfile_pattern = NULL,
     .errfile_pattern = NULL,
+
+    .pid_ref_count = 0,
 };
 /* *INDENT-ON* */
 
 struct mpiexec_pg *mpiexec_pg_hash = NULL;
+
+int *contig_pids;
 
 static void signal_cb(int signum)
 {
@@ -89,26 +95,26 @@ static void signal_cb(int signum)
     HYD_sock_write(mpiexec_params.signal_pipe[0], &cmd, sizeof(cmd), &sent, &closed,
                    HYD_SOCK_COMM_TYPE__BLOCKING);
 
-  fn_exit:
     HYD_FUNC_EXIT();
     return;
 }
 
 static HYD_status cmd_bcast_root(struct MPX_cmd cmd, struct mpiexec_pg *pg, void *buf)
 {
-    int i, sent, closed;
+    int sent, closed;
+    struct HYD_int_hash *hash, *thash;
     HYD_status status = HYD_SUCCESS;
 
-    for (i = 0; i < pg->num_downstream; i++) {
+    MPL_HASH_ITER(hh, pg->downstream.fd_control_hash, hash, thash) {
         status =
-            HYD_sock_write(pg->downstream.fd_control[i], &cmd, sizeof(cmd), &sent, &closed,
+            HYD_sock_write(hash->key, &cmd, sizeof(cmd), &sent, &closed,
                            HYD_SOCK_COMM_TYPE__BLOCKING);
         HYD_ERR_POP(status, "error sending cwd cmd to proxy\n");
         HYD_ASSERT(!closed, status);
 
         if (cmd.data_len) {
             status =
-                HYD_sock_write(pg->downstream.fd_control[i], buf, cmd.data_len, &sent, &closed,
+                HYD_sock_write(hash->key, buf, cmd.data_len, &sent, &closed,
                                HYD_SOCK_COMM_TYPE__BLOCKING);
             HYD_ERR_POP(status, "error sending cwd to proxy\n");
             HYD_ASSERT(!closed, status);
@@ -269,38 +275,34 @@ static HYD_status find_launcher(void)
 static HYD_status push_env_downstream(struct mpiexec_pg *pg)
 {
     struct HYD_env *env, *inherit;
-    int env_count;
-    char **env_args;
     int i;
     struct MPX_cmd cmd;
+    int count;
     HYD_status status = HYD_SUCCESS;
 
     HYD_FUNC_ENTER();
 
-    /* setup primary and secondary environment lists */
-    mpiexec_params.primary.list = NULL;
-    mpiexec_params.secondary.list = NULL;
-
     status = HYD_env_list_inherited(&inherit);
     HYD_ERR_POP(status, "unable to get the inherited env list\n");
+    for (env = inherit, count = 0; env; env = env->next, count++);
 
     if (mpiexec_params.envprop == MPIEXEC_ENVPROP__UNSET) {
-        /* inherited env is secondary */
-        if (mpiexec_params.secondary.list == NULL)
-            mpiexec_params.secondary.list = inherit;
-        else {
-            for (env = mpiexec_params.secondary.list; env->next; env = env->next);
-            env->next = inherit;
+        HYD_REALLOC(mpiexec_params.secondary.env, char **,
+                    (mpiexec_params.secondary.envcount + count) * sizeof(char *), status);
+        for (env = inherit, i = mpiexec_params.secondary.envcount; env; env = env->next, i++) {
+            status = HYD_env_to_str(env, &mpiexec_params.secondary.env[i]);
+            HYD_ERR_POP(status, "error converting env to string\n");
         }
+        mpiexec_params.secondary.envcount += count;
     }
     else if (mpiexec_params.envprop == MPIEXEC_ENVPROP__ALL) {
-        /* inherited env is primary */
-        if (mpiexec_params.primary.list == NULL)
-            mpiexec_params.primary.list = inherit;
-        else {
-            for (env = mpiexec_params.primary.list; env->next; env = env->next);
-            env->next = inherit;
+        HYD_REALLOC(mpiexec_params.primary.env, char **,
+                    (mpiexec_params.primary.envcount + count) * sizeof(char *), status);
+        for (env = inherit, i = mpiexec_params.primary.envcount; env; env = env->next, i++) {
+            status = HYD_env_to_str(env, &mpiexec_params.primary.env[i]);
+            HYD_ERR_POP(status, "error converting env to string\n");
         }
+        mpiexec_params.primary.envcount += count;
     }
     else if (mpiexec_params.envprop == MPIEXEC_ENVPROP__NONE) {
         /* inherited env is completely ignored */
@@ -308,13 +310,18 @@ static HYD_status push_env_downstream(struct mpiexec_pg *pg)
     else if (mpiexec_params.envprop == MPIEXEC_ENVPROP__LIST) {
         /* pick out specific variables from the inherited env and drop
          * the rest */
+        HYD_REALLOC(mpiexec_params.primary.env, char **,
+                    (mpiexec_params.primary.envcount +
+                     mpiexec_params.envlist_count) * sizeof(char *), status);
         for (i = 0; i < mpiexec_params.envlist_count; i++) {
             for (env = inherit; env; env = env->next) {
                 if (!strcmp(mpiexec_params.envlist[i], env->env_name)) {
                     status =
-                        HYD_env_append_to_list(env->env_name, env->env_value,
-                                               &mpiexec_params.primary.list);
-                    HYD_ERR_POP(status, "error setting env\n");
+                        HYD_env_to_str(env,
+                                       &mpiexec_params.primary.env[i +
+                                                                   mpiexec_params.primary.
+                                                                   envcount]);
+                    HYD_ERR_POP(status, "error converting env to string\n");
                 }
             }
             if (!env) {
@@ -322,42 +329,27 @@ static HYD_status push_env_downstream(struct mpiexec_pg *pg)
                                    mpiexec_params.envlist[i]);
             }
         }
+        mpiexec_params.primary.envcount += count;
     }
 
     /* Preset common environment options for disabling STDIO buffering
      * in Fortran */
-    HYD_env_append_to_list("GFORTRAN_UNBUFFERED_PRECONNECTED", "y", &mpiexec_params.primary.list);
+    HYD_REALLOC(mpiexec_params.primary.env, char **,
+                (mpiexec_params.primary.envcount + 1) * sizeof(char *), status);
+    mpiexec_params.primary.env[mpiexec_params.primary.envcount] =
+        MPL_strdup("GFORTRAN_UNBUFFERED_PRECONNECTED=y");
+    mpiexec_params.primary.envcount++;
 
-    env_count = 0;
-    for (env = mpiexec_params.primary.list; env; env = env->next)
-        env_count++;
-    if (env_count) {
-        HYD_MALLOC(env_args, char **, env_count * sizeof(char *), status);
-        for (env = mpiexec_params.primary.list, i = 0; env; env = env->next, i++) {
-            status = HYD_env_to_str(env, &env_args[i]);
-            HYD_ERR_POP(status, "error converting env to str\n");
-        }
-        MPL_args_serialize(env_count, env_args, &mpiexec_params.primary.serialized_buf_len,
+    if (mpiexec_params.primary.envcount) {
+        MPL_args_serialize(mpiexec_params.primary.envcount, mpiexec_params.primary.env,
+                           &mpiexec_params.primary.serialized_buf_len,
                            &mpiexec_params.primary.serialized_buf);
-        for (i = 0; i < env_count; i++)
-            MPL_free(env_args[i]);
-        MPL_free(env_args);
     }
 
-    env_count = 0;
-    for (env = mpiexec_params.secondary.list; env; env = env->next)
-        env_count++;
-    if (env_count) {
-        HYD_MALLOC(env_args, char **, env_count * sizeof(char *), status);
-        for (env = mpiexec_params.secondary.list, i = 0; env; env = env->next, i++) {
-            status = HYD_env_to_str(env, &env_args[i]);
-            HYD_ERR_POP(status, "error converting env to str\n");
-        }
-        MPL_args_serialize(env_count, env_args, &mpiexec_params.secondary.serialized_buf_len,
+    if (mpiexec_params.secondary.envcount) {
+        MPL_args_serialize(mpiexec_params.secondary.envcount, mpiexec_params.secondary.env,
+                           &mpiexec_params.secondary.serialized_buf_len,
                            &mpiexec_params.secondary.serialized_buf);
-        for (i = 0; i < env_count; i++)
-            MPL_free(env_args[i]);
-        MPL_free(env_args);
     }
 
     MPL_VG_MEM_INIT(&cmd, sizeof(cmd));
@@ -549,28 +541,27 @@ static HYD_status control_cb(int fd, HYD_dmx_event_t events, void *userp)
         HYD_ERR_POP(status, "error handling PMI barrier\n");
     }
     else if (cmd.type == MPX_CMD_TYPE__KVCACHE_IN) {
-        int i;
+        struct HYD_int_hash *hash;
 
         MPL_HASH_FIND_INT(mpiexec_pg_hash, &cmd.u.kvcache.pgid, pg);
 
-        /* FIXME: use a hash */
-        for (i = 0; i < pg->num_downstream; i++)
-            if (pg->downstream.fd_control[i] == fd)
-                break;
-        HYD_ASSERT(i < pg->num_downstream, status);
+        MPL_HASH_FIND_INT(pg->downstream.fd_control_hash, &fd, hash);
+        HYD_ASSERT(hash->val < pg->num_downstream, status);
 
-        HYD_ASSERT(pg->downstream.kvcache[i] == NULL, status);
-        HYD_ASSERT(pg->downstream.kvcache_size[i] == 0, status);
-        HYD_ASSERT(pg->downstream.kvcache_num_blocks[i] == 0, status);
+        HYD_ASSERT(pg->downstream.kvcache[hash->val] == NULL, status);
+        HYD_ASSERT(pg->downstream.kvcache_size[hash->val] == 0, status);
+        HYD_ASSERT(pg->downstream.kvcache_num_blocks[hash->val] == 0, status);
 
-        pg->downstream.kvcache_num_blocks[i] = cmd.u.kvcache.num_blocks;
-        pg->downstream.kvcache_size[i] = cmd.data_len;
+        pg->downstream.kvcache_num_blocks[hash->val] = cmd.u.kvcache.num_blocks;
+        pg->downstream.kvcache_size[hash->val] = cmd.data_len;
 
-        HYD_MALLOC(pg->downstream.kvcache[i], char *, pg->downstream.kvcache_size[i], status);
+        HYD_MALLOC(pg->downstream.kvcache[hash->val], char *,
+                   pg->downstream.kvcache_size[hash->val], status);
 
         status =
-            HYD_sock_read(fd, pg->downstream.kvcache[i], pg->downstream.kvcache_size[i], &recvd,
-                          &closed, HYD_SOCK_COMM_TYPE__BLOCKING);
+            HYD_sock_read(fd, pg->downstream.kvcache[hash->val],
+                          pg->downstream.kvcache_size[hash->val], &recvd, &closed,
+                          HYD_SOCK_COMM_TYPE__BLOCKING);
         HYD_ERR_POP(status, "error reading PMI command\n");
     }
     else if (cmd.type == MPX_CMD_TYPE__STDOUT) {
@@ -600,6 +591,39 @@ static HYD_status control_cb(int fd, HYD_dmx_event_t events, void *userp)
         HYD_ERR_POP(status, "error calling stderr cb\n");
 
         MPL_free(buf);
+    }
+    else if (cmd.type == MPX_CMD_TYPE__PID) {
+        int *proxy_pids;
+        int n_proxy_pids;
+        int *proxy_pmi_ids;
+        int i;
+
+        /* Find the proxy id of the proxy sending the data */
+        n_proxy_pids = cmd.data_len / (2 * sizeof(int));
+
+        /* Read the data from the socket */
+        HYD_MALLOC(proxy_pids, int *, cmd.data_len, status);
+        status =
+            HYD_sock_read(fd, proxy_pids, cmd.data_len, &recvd, &closed, HYD_SOCK_COMM_TYPE__BLOCKING);
+        proxy_pmi_ids = proxy_pids + (cmd.data_len / (2 * sizeof(int)));
+
+        /* Move pid to the correct place in the pid array */
+        for (i = 0; i < n_proxy_pids; i++) {
+            contig_pids[proxy_pmi_ids[i]] = proxy_pids[i];
+        }
+
+        MPL_free(proxy_pids);
+
+        mpiexec_params.pid_ref_count++;
+
+        MPL_HASH_FIND_INT(mpiexec_pg_hash, &cmd.u.pids.pgid, pg);
+
+        /* If we have all of the pids, post the list to the MPIR_PROCDESC struct so the debugger can find it */
+        if (mpiexec_params.pid_ref_count == pg->num_downstream) {
+            HYD_dbg_setup_procdesc(pg->total_proc_count, pg->exec_list, contig_pids, pg->node_count, pg->node_list);
+
+            MPL_free(contig_pids);
+        }
     }
     else {
         HYD_ERR_SETANDJUMP(status, HYD_ERR_INTERNAL, "received unknown cmd %d\n", cmd.type);
@@ -676,6 +700,7 @@ int main(int argc, char **argv)
     struct mpiexec_pg *pg;
     char *args[MAX_CMD_ARGS];
     int pgid = 0, core_count;
+    struct HYD_int_hash *hash, *thash;
     HYD_status status = HYD_SUCCESS;
 
     HYD_FUNC_ENTER();
@@ -713,6 +738,8 @@ int main(int argc, char **argv)
             exec->proc_count = mpiexec_params.global_core_count;
         pg->total_proc_count += exec->proc_count;
     }
+
+    HYD_MALLOC(contig_pids, int *, pg->total_proc_count, status);
 
     if (mpiexec_params.usize == MPIEXEC_USIZE__SYSTEM)
         mpiexec_params.usize = mpiexec_params.global_core_count;
@@ -783,8 +810,8 @@ int main(int argc, char **argv)
         HYD_bstrap_setup(mpiexec_params.base_path, mpiexec_params.launcher,
                          mpiexec_params.launcher_exec, pg->node_count, pg->node_list, -1,
                          mpiexec_params.port_range, args, 0, &pg->num_downstream,
-                         &pg->downstream.fd_stdin, &pg->downstream.fd_stdout,
-                         &pg->downstream.fd_stderr, &pg->downstream.fd_control,
+                         &pg->downstream.fd_stdin, &pg->downstream.fd_stdout_hash,
+                         &pg->downstream.fd_stderr_hash, &pg->downstream.fd_control_hash,
                          &pg->downstream.proxy_id, &pg->downstream.pid, mpiexec_params.debug,
                          mpiexec_params.tree_width);
     HYD_ERR_POP(status, "error setting up the boostrap proxies\n");
@@ -815,34 +842,45 @@ int main(int argc, char **argv)
     status = initiate_process_launch(pg);
     HYD_ERR_POP(status, "error setting up the pmi_id propagation\n");
 
-    for (i = 0; i < pg->num_downstream; i++) {
-        status =
-            HYD_dmx_register_fd(pg->downstream.fd_control[i], HYD_DMX_POLLIN, NULL, control_cb);
+    MPL_HASH_ITER(hh, pg->downstream.fd_control_hash, hash, thash) {
+        status = HYD_dmx_register_fd(hash->key, HYD_DMX_POLLIN, NULL, control_cb);
         HYD_ERR_POP(status, "error registering control fd\n");
-
-        status = HYD_dmx_splice(pg->downstream.fd_stdout[i], STDOUT_FILENO);
-        HYD_ERR_POP(status, "error splicing stdout fd\n");
-
-        status = HYD_dmx_splice(pg->downstream.fd_stderr[i], STDERR_FILENO);
-        HYD_ERR_POP(status, "error splicing stderr fd\n");
-
-        if (i == 0) {
-            status = HYD_dmx_splice(STDIN_FILENO, pg->downstream.fd_stdin[i]);
-            HYD_ERR_POP(status, "error splicing stdin fd\n");
-        }
-        else {
-            close(pg->downstream.fd_stdin[i]);
-        }
     }
 
+    MPL_HASH_ITER(hh, pg->downstream.fd_stdout_hash, hash, thash) {
+        status = HYD_dmx_splice(hash->key, STDOUT_FILENO);
+        HYD_ERR_POP(status, "error splicing stdout fd\n");
+    }
+
+    MPL_HASH_ITER(hh, pg->downstream.fd_stderr_hash, hash, thash) {
+        status = HYD_dmx_splice(hash->key, STDERR_FILENO);
+        HYD_ERR_POP(status, "error splicing stderr fd\n");
+    }
+
+    status = HYD_dmx_splice(STDIN_FILENO, pg->downstream.fd_stdin);
+    HYD_ERR_POP(status, "error splicing stdin fd\n");
+
     /* wait for downstream processes to terminate */
-    for (i = 0; i < pg->num_downstream; i++)
-        while (HYD_dmx_query_fd_registration(pg->downstream.fd_stdout[i]) ||
-               HYD_dmx_query_fd_registration(pg->downstream.fd_stderr[i]) ||
-               HYD_dmx_query_fd_registration(pg->downstream.fd_control[i])) {
+    MPL_HASH_ITER(hh, pg->downstream.fd_control_hash, hash, thash) {
+        while (HYD_dmx_query_fd_registration(hash->key)) {
             status = HYD_dmx_wait_for_event(-1);
             HYD_ERR_POP(status, "error waiting for event\n");
         }
+    }
+
+    MPL_HASH_ITER(hh, pg->downstream.fd_stdout_hash, hash, thash) {
+        while (HYD_dmx_query_fd_registration(hash->key)) {
+            status = HYD_dmx_wait_for_event(-1);
+            HYD_ERR_POP(status, "error waiting for event\n");
+        }
+    }
+
+    MPL_HASH_ITER(hh, pg->downstream.fd_stderr_hash, hash, thash) {
+        while (HYD_dmx_query_fd_registration(hash->key)) {
+            status = HYD_dmx_wait_for_event(-1);
+            HYD_ERR_POP(status, "error waiting for event\n");
+        }
+    }
 
     for (i = 0; i < pg->num_downstream; i++) {
         int ret;
@@ -872,12 +910,20 @@ int main(int argc, char **argv)
     close(mpiexec_params.signal_pipe[0]);
     close(mpiexec_params.signal_pipe[1]);
 
-    for (i = 0; i < pg->num_downstream; i++) {
-        status = HYD_dmx_unsplice(pg->downstream.fd_stdout[i]);
+    MPL_HASH_ITER(hh, pg->downstream.fd_stdout_hash, hash, thash) {
+        status = HYD_dmx_unsplice(hash->key);
         HYD_ERR_POP(status, "error deregistering fd\n");
 
-        status = HYD_dmx_unsplice(pg->downstream.fd_stderr[i]);
+        MPL_HASH_DEL(pg->downstream.fd_stdout_hash, hash);
+        MPL_free(hash);
+    }
+
+    MPL_HASH_ITER(hh, pg->downstream.fd_stderr_hash, hash, thash) {
+        status = HYD_dmx_unsplice(hash->key);
         HYD_ERR_POP(status, "error deregistering fd\n");
+
+        MPL_HASH_DEL(pg->downstream.fd_stderr_hash, hash);
+        MPL_free(hash);
     }
 
     status = HYD_dmx_unsplice(STDIN_FILENO);
@@ -890,18 +936,15 @@ int main(int argc, char **argv)
     if (pg->exec_list)
         HYD_exec_free_list(pg->exec_list);
 
-    if (pg->downstream.fd_stdin)
-        MPL_free(pg->downstream.fd_stdin);
-    if (pg->downstream.fd_stdout)
-        MPL_free(pg->downstream.fd_stdout);
-    if (pg->downstream.fd_stderr)
-        MPL_free(pg->downstream.fd_stderr);
-    if (pg->downstream.fd_control)
-        MPL_free(pg->downstream.fd_control);
     if (pg->downstream.proxy_id)
         MPL_free(pg->downstream.proxy_id);
     if (pg->downstream.pid)
         MPL_free(pg->downstream.pid);
+
+    MPL_HASH_ITER(hh, pg->downstream.fd_control_hash, hash, thash) {
+        MPL_HASH_DEL(pg->downstream.fd_control_hash, hash);
+        MPL_free(hash);
+    }
 
     for (i = 0; i < pg->num_downstream; i++)
         if (pg->downstream.kvcache[i])
@@ -949,13 +992,19 @@ int main(int argc, char **argv)
     if (mpiexec_params.envlist)
         MPL_free(mpiexec_params.envlist);
 
-    if (mpiexec_params.primary.list)
-        HYD_env_free_list(mpiexec_params.primary.list);
+    for (i = 0; i < mpiexec_params.primary.envcount; i++)
+        MPL_free(mpiexec_params.primary.env[i]);
+    if (mpiexec_params.primary.envcount)
+        MPL_free(mpiexec_params.primary.env);
+
     if (mpiexec_params.primary.serialized_buf)
         MPL_free(mpiexec_params.primary.serialized_buf);
 
-    if (mpiexec_params.secondary.list)
-        HYD_env_free_list(mpiexec_params.secondary.list);
+    for (i = 0; i < mpiexec_params.secondary.envcount; i++)
+        MPL_free(mpiexec_params.secondary.env[i]);
+    if (mpiexec_params.secondary.envcount)
+        MPL_free(mpiexec_params.secondary.env);
+
     if (mpiexec_params.secondary.serialized_buf)
         MPL_free(mpiexec_params.secondary.serialized_buf);
 
