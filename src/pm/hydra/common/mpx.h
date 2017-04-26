@@ -33,6 +33,7 @@ enum MPX_cmd_type {
     MPX_CMD_TYPE__KVCACHE_IN,
     MPX_CMD_TYPE__PID,
     MPX_CMD_TYPE__EXITCODE,
+    MPX_CMD_TYPE__PMI_BARRIER_IN,
 };
 
 struct MPX_cmd {
