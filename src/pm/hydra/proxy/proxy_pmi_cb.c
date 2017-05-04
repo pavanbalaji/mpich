@@ -564,6 +564,7 @@ static HYD_status fn_spawn(int fd, struct proxy_kv_hash *pmi_args){
     char *totspawns = NULL, *spawnssofar = NULL, *upstream_string = NULL;
     struct MPX_cmd cmd;
     HYD_FUNC_ENTER();
+    HYD_PRINT(stdout, "Entered proxy_pmi_cb.c::fn_spawn\n");
     MPL_HASH_ITER(hh, pmi_args, hash, tmp){
         HYD_STRING_STASH(stash, MPL_strdup(hash->key), status);
         HYD_STRING_STASH(stash, MPL_strdup("="), status);
@@ -574,10 +575,15 @@ static HYD_status fn_spawn(int fd, struct proxy_kv_hash *pmi_args){
         if(!strcmp(hash->key, "spawnssofar"))
             spawnssofar = hash->val;
     }
+    HYD_STRING_SPIT(stash, upstream_string, status);
+    HYD_PRINT(stdout, "Extracted totspawns and spawnssofar in proxy_pmi_cb.c::fn_spawn\n");
+
     if(totspawns && spawnssofar && !strcmp(totspawns, spawnssofar)){
+        HYD_PRINT(stdout, "Entered if in proxy_pmi_cb.c::fn_spawn\n");
         MPL_VG_MEM_INIT(&cmd, sizeof(cmd));
         cmd.type = MPX_CMD_TYPE__PMI_SPAWN;
-        cmd.data_len = strlen(upstream_string); //where is our spawn command string?
+        cmd.data_len = strlen(upstream_string);
+        HYD_PRINT(stdout, "strlen(NULL) is not evaluated in proxy_pmi_cb.c::fn_spawn\n");
         status = HYD_sock_write(proxy_params.root.upstream_fd, &cmd, sizeof(cmd), &sent, &closed,
                                 HYD_SOCK_COMM_TYPE__BLOCKING); 
         HYD_ERR_POP(status, "error sending cmd upstream\n");
@@ -586,7 +592,9 @@ static HYD_status fn_spawn(int fd, struct proxy_kv_hash *pmi_args){
                                 HYD_SOCK_COMM_TYPE__BLOCKING);
         HYD_ERR_POP(status, "error sending cmd upstream\n");
         HYD_ASSERT(!closed, status);
+        HYD_PRINT(stdout, "Entered proxy_pmi_cb.c:fn_spawn successfully forwarded the packet upstream\n");
     }
+    HYD_PRINT(stdout, "Just passed by if in proxy_pmi_cb.c::fn_spawn\n");
   fn_exit:
     HYD_FUNC_EXIT();
     return status;
