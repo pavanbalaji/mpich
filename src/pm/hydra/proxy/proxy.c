@@ -1,4 +1,3 @@
-/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
  *  (C) 2017 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -585,10 +584,6 @@ int main(int argc, char **argv)
     status = HYD_print_set_prefix_str("proxy:unset");
     HYD_ERR_POP(status, "unable to set dbg prefix\n");
 
-    HYD_MALLOC(proxy_pids, int **, proxy_params.immediate.proxy.num_children * sizeof(int *), status);
-    HYD_MALLOC(n_proxy_pids, int *, proxy_params.immediate.proxy.num_children * sizeof(int), status);
-    HYD_MALLOC(proxy_pmi_ids, int **, proxy_params.immediate.proxy.num_children * sizeof(int *), status);
-
     /* To launch the MPI processes, we follow a process:
      * (1) get parameters from the bstrap, as arguments or from
      * upstream, (2) make sure all the parameters we need are
@@ -601,6 +596,10 @@ int main(int argc, char **argv)
     HYD_ERR_POP(status, "error getting parameters\n");
     status = get_bstrap_params();
     HYD_ERR_POP(status, "error getting parameters\n");
+
+    HYD_MALLOC(proxy_pids, int **, (proxy_params.immediate.proxy.num_children + 1) * sizeof(int *), status);
+    HYD_MALLOC(n_proxy_pids, int *, (proxy_params.immediate.proxy.num_children + 1) * sizeof(int), status);
+    HYD_MALLOC(proxy_pmi_ids, int **, (proxy_params.immediate.proxy.num_children + 1) * sizeof(int *), status);
 
     MPL_snprintf(dbg_prefix, 2 * HYD_MAX_HOSTNAME_LEN, "proxy:%d:%d", proxy_params.all.pgid,
                  proxy_params.root.proxy_id);
