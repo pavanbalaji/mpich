@@ -517,6 +517,11 @@ static HYD_status initiate_process_launch(struct mpiexec_pg *pg)
     goto fn_exit;
 }
 
+static HYD_status do_spawn(int fd, int pid/*=0*/, char *mcmd_args[], int mcmd_num_args){
+    HYD_status status = HYD_SUCCESS;
+    return status;
+}
+
 static HYD_status control_cb(int fd, HYD_dmx_event_t events, void *userp)
 {
     struct MPX_cmd cmd;
@@ -650,6 +655,39 @@ static HYD_status control_cb(int fd, HYD_dmx_event_t events, void *userp)
 
         memcpy(exitcodes[cmd.u.exitcodes.proxy_id], contig_data, cmd.data_len / 2);
         memcpy(exitcode_node_ids[cmd.u.exitcodes.proxy_id], &contig_data[n_proxy_exitcodes[cmd.u.exitcodes.proxy_id]], cmd.data_len / 2);
+    } else if (cmd.type == MPX_CMD_TYPE__PMI_SPAWN){
+        HYD_MALLOC(buf, char *, cmd.data_len, status);
+                status =
+                    HYD_sock_read(fd, buf, cmd.data_len, &recvd, &closed, HYD_SOCK_COMM_TYPE__BLOCKING);
+                HYD_ERR_POP(status, "error reading data\n");
+                HYD_ASSERT(!closed, status);
+
+                HYD_PRINT(stdout, "mpiexec got %s\n", buf);
+
+                int mcmd_num_args = 0;
+                char *ip = buf, *nip = buf;
+                for(; nip; ++mcmd_num_args){
+                    nip = strchr(ip, '\n');
+                    if(nip)
+                        ip = nip + 1;
+                }
+
+                char **mcmd_args;
+                HYD_MALLOC(mcmd_args, char **, (mcmd_num_args + 1) * sizeof(char*), status);
+                int i;
+                for (i = 0, ip = buf; i < mcmd_num_args; ++i){
+                    nip = strchr(ip, '\n');
+                    if(nip){
+                        *nip = '\0';
+                        HYD_PRINT(stdout, "token: %s\n", ip);
+                        mcmd_args[i] = MPL_strdup(ip);
+                        ip = nip + 1;
+                    }
+                }
+                mcmd_args[mcmd_num_args - 1] = NULL;
+                HYD_PRINT(stdout, "Saving %d lines\n", mcmd_num_args);
+
+                do_spawn(fd, 0, mcmd_args, mcmd_num_args);
     }
     else {
         HYD_ERR_SETANDJUMP(status, HYD_ERR_INTERNAL, "received unknown cmd %d\n", cmd.type);
