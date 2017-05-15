@@ -35,7 +35,6 @@ HYD_status HYDI_bstrap_ll_launch(const char *hostname, const char *launch_exec, 
     idx = 0;
     
     targs[idx++] = MPL_strdup(lexec);
-//    targs[idx++] = MPL_strdup("-x");
     targs[idx++] = MPL_strdup(hostname);
     for (i = 0; args[i]; i++)
         targs[idx++] = MPL_strdup(args[i]);
@@ -45,25 +44,6 @@ HYD_status HYDI_bstrap_ll_launch(const char *hostname, const char *launch_exec, 
         HYD_PRINT(stdout, "Launch arguments: ");
         HYD_str_print_list(targs);
     }
-                                                        
-    
-    
-    
-/*    targs[idx++] = MPL_strdup(lexec);
-
-    targs[idx++] = MPL_strdup(hostname);
-*/
-    /* Fill in the remaining arguments */
-    /* We do not need to create a quoted version of the string for
-     * SLURM. It seems to be internally quoting it anyway. */
-/*    for (i = 0; args[i]; i++)
-        targs[idx++] = MPL_strdup(args[i]);
-
-    if (debug) {
-        HYD_PRINT(stdout, "Launch arguments: ");
-        HYD_str_print_list(targs);
-    }
-*/                        
 
     status = HYD_spawn(targs, 0, NULL, fd_stdin, fd_stdout, fd_stderr, pid, -1);
     HYD_ERR_POP(status, "create process returned error\n");
