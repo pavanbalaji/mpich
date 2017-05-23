@@ -517,8 +517,193 @@ static HYD_status initiate_process_launch(struct mpiexec_pg *pg)
     goto fn_exit;
 }
 
-static HYD_status do_spawn(int fd, int pid/*=0*/, char *mcmd_args[], int mcmd_num_args){
+
+static HYD_status compute_pmi_process_mapping(struct mpiexec_pg *pg)
+{
+    int sid, nn, cc, i;
+    struct HYD_string_stash stash;
     HYD_status status = HYD_SUCCESS;
+
+    HYD_STRING_STASH_INIT(stash);
+    HYD_STRING_STASH(stash, MPL_strdup("(vector"), status);
+
+    sid = 0;
+    nn = 0;
+    cc = 0;
+    for (i = 0; i < pg->node_count; i++) {
+        if (nn == 0) {
+            nn++;
+            cc = pg->node_list[i].core_count;
+            continue;
+        }
+
+        if (cc == pg->node_list[i].core_count)
+            nn++;
+        else {
+            /* stash this set and move forward */
+            HYD_STRING_STASH(stash, MPL_strdup(",("), status);
+            HYD_STRING_STASH(stash, HYD_str_from_int(sid), status);
+            HYD_STRING_STASH(stash, MPL_strdup(","), status);
+            HYD_STRING_STASH(stash, HYD_str_from_int(nn), status);
+            HYD_STRING_STASH(stash, MPL_strdup(","), status);
+            HYD_STRING_STASH(stash, HYD_str_from_int(cc), status);
+            HYD_STRING_STASH(stash, MPL_strdup(")"), status);
+
+            sid = i;
+            nn = 1;
+            cc = pg->node_list[i].core_count;
+        }
+    }
+
+    HYD_STRING_STASH(stash, MPL_strdup(",("), status);
+    HYD_STRING_STASH(stash, HYD_str_from_int(sid), status);
+    HYD_STRING_STASH(stash, MPL_strdup(","), status);
+    HYD_STRING_STASH(stash, HYD_str_from_int(nn), status);
+    HYD_STRING_STASH(stash, MPL_strdup(","), status);
+    HYD_STRING_STASH(stash, HYD_str_from_int(cc), status);
+    HYD_STRING_STASH(stash, MPL_strdup("))"), status);
+
+    HYD_STRING_SPIT(stash, pg->pmi_process_mapping, status);
+
+  fn_exit:
+    return status;
+
+  fn_fail:
+    goto fn_exit;
+}
+
+static HYD_status do_spawn(int fd, struct mpiexec_pg *curr_pg, char *mcmd_args[], int mcmd_num_args){
+    HYD_status status = HYD_SUCCESS;
+    HYD_PRINT(stdout, "do_spawn is reached\n");
+    struct mpiexec_pg *pg, *tmp, *new_pg;
+    int sent, recvd, closed;
+
+    /*    system("pstree mbanin");
+          HYD_PRINT(stdout, "Is bstrap proxy a leftover?\n"); */
+
+    /* Build a new process group */
+    int new_pgid = 0;
+    MPL_HASH_ITER(hh, mpiexec_pg_hash, pg, tmp) {
+        HYD_PRINT(stdout, "pgid = %d is already in use\n", pg->pgid);
+        if(pg->pgid + 1 > new_pgid)
+            new_pgid = pg->pgid + 1;
+    } 
+
+    status = get_node_list();
+    HYD_ERR_POP(status, "unable to find an RMK and the node list\n");
+
+    status = find_launcher();
+    HYD_ERR_POP(status, "unable to find a valid launcher\n");
+
+    HYD_PRINT(stdout, "Newly spawned group gets pgid = %d\n", new_pgid);
+    mpiexec_alloc_pg(&new_pg, new_pgid);
+    HYD_PRINT(stdout, "Allocated new process group\n");
+
+    
+    /* FIXME: set pg->num_downstream from mcmd_args */
+    /* TODO: fill in HYD_exec with binary -//- */
+    new_pg->num_downstream = 1;
+    new_pg->total_proc_count = 1;
+
+    /* FIXME: exec_list is (null) till we allocate it */
+    HYD_exec_alloc(&new_pg->exec_list);
+     new_pg->exec_list->exec[0] = MPL_strdup("a.out");
+     new_pg->exec_list->exec[1] = NULL;
+    new_pg->exec_list->proc_count = 1;
+
+    /*  Fill new_pg node_list */
+    new_pg->node_count = mpiexec_params.global_node_count;
+    new_pg->node_list = mpiexec_params.global_node_list;
+
+    status = compute_pmi_process_mapping(new_pg);
+    HYD_ERR_POP(status, "error computing PMI process mapping\n");
+
+    char *args[1024];
+    int i = 0;
+    /* Closely follow shat's being done in the main codepath */
+    {
+
+        char *tmp[HYD_NUM_TMP_STRINGS] = { NULL };
+        int j;
+
+        j = 0;
+        tmp[j++] = MPL_strdup(mpiexec_params.base_path);
+        tmp[j++] = MPL_strdup("/");
+        tmp[j++] = MPL_strdup(HYDRA_PMI_PROXY);
+        tmp[j++] = NULL;
+
+        status = HYD_str_alloc_and_join(tmp, &args[i]);
+        HYD_ERR_POP(status, "unable to join strings\n");
+        HYD_str_free_list(tmp);
+        ++i;
+    }
+
+    args[i++] = MPL_strdup("--usize");
+    args[i++] = HYD_str_from_int(mpiexec_params.usize);
+    args[i++] = NULL;
+
+    /*    HYD_PRINT(stdout, "bstrap_setup with:\n");
+    HYD_PRINT(stdout, "base_path = %s\n", mpiexec_params.base_path);
+    HYD_PRINT(stdout, "port_range = %s\n", mpiexec_params.port_range);
+    HYD_PRINT(stdout, "num_downstream = %d\n", new_pg->num_downstream);
+    HYD_PRINT(stdout, "node_count = %d\n", new_pg->node_count);
+    HYD_PRINT(stdout, "len(node_list) = %d\n", mpiexec_params.global_node_count);
+    HYD_PRINT(stdout, "...\n"); */
+
+    status =
+        HYD_bstrap_setup(mpiexec_params.base_path, mpiexec_params.launcher,
+                         mpiexec_params.launcher_exec, new_pg->node_count, mpiexec_params.global_node_list, -1,
+                         mpiexec_params.port_range, args, new_pgid, &new_pg->num_downstream,
+                         &new_pg->downstream.fd_stdin, &new_pg->downstream.fd_stdout_hash,
+                         &new_pg->downstream.fd_stderr_hash, &new_pg->downstream.fd_control_hash,
+                         &new_pg->downstream.proxy_id, &new_pg->downstream.pid, mpiexec_params.debug,
+                         mpiexec_params.tree_width);
+    HYD_ERR_POP(status, "error setting up the boostrap proxies\n");
+
+    HYD_str_free_list(args);
+
+    HYD_MALLOC(new_pg->downstream.kvcache, void **, new_pg->num_downstream * sizeof(void *), status);
+    HYD_MALLOC(new_pg->downstream.kvcache_size, int *, new_pg->num_downstream * sizeof(int), status);
+    HYD_MALLOC(new_pg->downstream.kvcache_num_blocks, int *, new_pg->num_downstream * sizeof(int), status);
+    for (i = 0; i < new_pg->num_downstream; i++) {
+        new_pg->downstream.kvcache[i] = NULL;
+        new_pg->downstream.kvcache_size[i] = 0;
+        new_pg->downstream.kvcache_num_blocks[i] = 0;
+    }
+
+    /* TODO: Set PMI_SPAWNED in env. list of a child process */
+    status = push_env_downstream(new_pg);
+    HYD_ERR_POP(status, "error setting up the env propagation\n");
+
+    status = push_cwd_downstream(new_pg);
+    HYD_ERR_POP(status, "error setting up the cwd propagation\n");
+
+    status = push_exec_downstream(new_pg);
+    HYD_ERR_POP(status, "error setting up the exec propagation\n");
+
+    status = push_mapping_info_downstream(new_pg);
+    HYD_ERR_POP(status, "error setting up the pmi process mapping propagation\n");
+
+    status = initiate_process_launch(new_pg);
+    HYD_ERR_POP(status, "error setting up the pmi_id propagation\n");
+
+    /* TODO: Do a preput from mcmd contents */
+    /* TODO: Send envvals to new inferior */
+   
+    /* Inform initiator spawn succeeded */
+    char *cmd;
+    struct HYD_string_stash stash;
+    HYD_STRING_STASH_INIT(stash);
+    HYD_STRING_STASH(stash, MPL_strdup("cmd=spawn_result rc=0"), status);
+    HYD_STRING_STASH(stash, strdup("\n"), status);
+
+    HYD_STRING_SPIT(stash, cmd, status);
+    
+    status = HYD_sock_write(fd, cmd, strlen(cmd), &sent, &closed, HYD_SOCK_COMM_TYPE__BLOCKING);
+    HYD_ERR_POP(status, "error writing PMI line\n");
+    MPL_free(cmd);
+
+ fn_fail:;
     return status;
 }
 
@@ -687,7 +872,7 @@ static HYD_status control_cb(int fd, HYD_dmx_event_t events, void *userp)
                 mcmd_args[mcmd_num_args - 1] = NULL;
                 HYD_PRINT(stdout, "Saving %d lines\n", mcmd_num_args);
 
-                do_spawn(fd, 0, mcmd_args, mcmd_num_args);
+                do_spawn(fd, pg, mcmd_args, mcmd_num_args);
     }
     else {
         HYD_ERR_SETANDJUMP(status, HYD_ERR_INTERNAL, "received unknown cmd %d\n", cmd.type);
@@ -695,60 +880,6 @@ static HYD_status control_cb(int fd, HYD_dmx_event_t events, void *userp)
 
   fn_exit:
     HYD_FUNC_EXIT();
-    return status;
-
-  fn_fail:
-    goto fn_exit;
-}
-
-static HYD_status compute_pmi_process_mapping(struct mpiexec_pg *pg)
-{
-    int sid, nn, cc, i;
-    struct HYD_string_stash stash;
-    HYD_status status = HYD_SUCCESS;
-
-    HYD_STRING_STASH_INIT(stash);
-    HYD_STRING_STASH(stash, MPL_strdup("(vector"), status);
-
-    sid = 0;
-    nn = 0;
-    cc = 0;
-    for (i = 0; i < pg->node_count; i++) {
-        if (nn == 0) {
-            nn++;
-            cc = pg->node_list[i].core_count;
-            continue;
-        }
-
-        if (cc == pg->node_list[i].core_count)
-            nn++;
-        else {
-            /* stash this set and move forward */
-            HYD_STRING_STASH(stash, MPL_strdup(",("), status);
-            HYD_STRING_STASH(stash, HYD_str_from_int(sid), status);
-            HYD_STRING_STASH(stash, MPL_strdup(","), status);
-            HYD_STRING_STASH(stash, HYD_str_from_int(nn), status);
-            HYD_STRING_STASH(stash, MPL_strdup(","), status);
-            HYD_STRING_STASH(stash, HYD_str_from_int(cc), status);
-            HYD_STRING_STASH(stash, MPL_strdup(")"), status);
-
-            sid = i;
-            nn = 1;
-            cc = pg->node_list[i].core_count;
-        }
-    }
-
-    HYD_STRING_STASH(stash, MPL_strdup(",("), status);
-    HYD_STRING_STASH(stash, HYD_str_from_int(sid), status);
-    HYD_STRING_STASH(stash, MPL_strdup(","), status);
-    HYD_STRING_STASH(stash, HYD_str_from_int(nn), status);
-    HYD_STRING_STASH(stash, MPL_strdup(","), status);
-    HYD_STRING_STASH(stash, HYD_str_from_int(cc), status);
-    HYD_STRING_STASH(stash, MPL_strdup("))"), status);
-
-    HYD_STRING_SPIT(stash, pg->pmi_process_mapping, status);
-
-  fn_exit:
     return status;
 
   fn_fail:
@@ -785,6 +916,7 @@ int main(int argc, char **argv)
         MPL_env2str("MPIEXEC_PORT_RANGE", (const char **) &mpiexec_params.port_range))
         mpiexec_params.port_range = MPL_strdup(mpiexec_params.port_range);
 
+    HYD_PRINT(stdout, "(post inital portrange detection) port_range = %s\n", mpiexec_params.port_range);
     if (mpiexec_params.debug == -1 && MPL_env2bool("HYDRA_DEBUG", &mpiexec_params.debug) == 0)
         mpiexec_params.debug = 0;
 
@@ -870,6 +1002,8 @@ int main(int argc, char **argv)
     args[i++] = HYD_str_from_int(mpiexec_params.usize);
     args[i++] = NULL;
 
+    HYD_PRINT(stdout, "exec list is %p\n", pg->exec_list);
+    HYD_PRINT(stdout, "(pre main bstrap setup) port_range = %s\n", mpiexec_params.port_range);
     status =
         HYD_bstrap_setup(mpiexec_params.base_path, mpiexec_params.launcher,
                          mpiexec_params.launcher_exec, pg->node_count, pg->node_list, -1,
@@ -881,6 +1015,8 @@ int main(int argc, char **argv)
     HYD_ERR_POP(status, "error setting up the boostrap proxies\n");
 
     HYD_str_free_list(args);
+
+    HYD_PRINT(stdout, "exec list is %p\n", pg->exec_list);
 
     HYD_MALLOC(pg->downstream.kvcache, void **, pg->num_downstream * sizeof(void *), status);
     HYD_MALLOC(pg->downstream.kvcache_size, int *, pg->num_downstream * sizeof(int), status);
@@ -1002,6 +1138,7 @@ int main(int argc, char **argv)
         }
     }
 
+    HYD_PRINT(stdout, "About to start freeing things, beware!\n");
     /* cleanup memory allocations to keep valgrind happy */
     status = HYD_bstrap_finalize(mpiexec_params.launcher);
     HYD_ERR_POP(status, "error finalizing bstrap\n");

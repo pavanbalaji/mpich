@@ -15,8 +15,14 @@ HYD_status HYD_spawn(char **client_arg, int envcount, char *const *const env, in
     int inpipe[2], outpipe[2], errpipe[2], tpid, i;
     char *str;
     HYD_status status = HYD_SUCCESS;
+    int j = 0;
 
     HYD_FUNC_ENTER();
+    /*    HYD_PRINT(stdout, "HYD_spawn(client_arg = (\n");
+    for(; client_arg[j]; ++j){
+        HYD_PRINT(stdout, "%p = %s\n", client_arg[j], client_arg[j]);
+    }
+    HYD_PRINT(stdout, ")\n");*/
 
     if (in && (pipe(inpipe) < 0))
         HYD_ERR_SETANDJUMP(status, HYD_ERR_SOCK, "pipe error (%s)\n", MPL_strerror(errno));
@@ -67,6 +73,7 @@ HYD_status HYD_spawn(char **client_arg, int envcount, char *const *const env, in
             HYD_ERR_POP(status, "bind process failed\n");
         }
 
+        HYD_PRINT(stdout, "%s with args", client_arg[0]);
         if (execvp(client_arg[0], client_arg) < 0) {
             /* The child process should never get back to the proxy
              * code; if there is an error, just throw it here and
