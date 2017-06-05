@@ -594,7 +594,7 @@ static HYD_status fn_spawn(int fd, struct proxy_kv_hash *pmi_args){
         HYD_ASSERT(!closed, status);
         HYD_PRINT(stdout, "Entered proxy_pmi_cb.c:fn_spawn successfully forwarded the packet upstream\n");
     }
-    HYD_PRINT(stdout, "Just passed by if in proxy_pmi_cb.c::fn_spawn\n");
+    HYD_PRINT(stdout, "proxy_pmi_cb.c::fn_spawn have finished executing\n");
   fn_exit:
     HYD_FUNC_EXIT();
     return status;
