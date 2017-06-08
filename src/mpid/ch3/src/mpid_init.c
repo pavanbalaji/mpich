@@ -299,9 +299,11 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
      * routine and should not rely on #ifdefs
      */
 #ifndef MPIDI_CH3_HAS_NO_DYNAMIC_PROCESS
+    printf("MPIDI_CH3_HAS_DYNAMIC_PROCESS\n");
+
     if (has_parent) {
 	char * parent_port;
-
+        printf("and has_parent too\n");
 	/* FIXME: To allow just the "root" process to 
 	   request the port and then use MPIR_Bcast_intra to 
 	   distribute it to the rest of the processes,
@@ -427,9 +429,11 @@ static int init_pg( int *argc, char ***argv,
 	 */
 
 #ifdef USE_PMI2_API
+        printf("using pmi2 api\n");
         mpi_errno = PMI2_Init(has_parent, &pg_size, &pg_rank, &appnum);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 #else
+        printf("using pmi1 api\n");
 	pmi_errno = PMI_Init(has_parent);
 	if (pmi_errno != PMI_SUCCESS) {
 	    MPIR_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, "**pmi_init",

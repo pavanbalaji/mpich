@@ -556,6 +556,7 @@ static HYD_status fn_abort(int fd, struct proxy_kv_hash *pmi_args)
   fn_fail:
     goto fn_exit;
 }
+
 static struct HYD_string_stash stash;
 static HYD_status fn_spawn(int fd, struct proxy_kv_hash *pmi_args){
     HYD_status status = HYD_SUCCESS;
@@ -596,6 +597,18 @@ static HYD_status fn_spawn(int fd, struct proxy_kv_hash *pmi_args){
     }
     HYD_PRINT(stdout, "proxy_pmi_cb.c::fn_spawn have finished executing\n");
   fn_exit:
+    HYD_FUNC_EXIT();
+    return status;
+
+  fn_fail:
+    goto fn_exit;
+}
+
+static HYD_status fn_preput(int fd, struct proxy_kv_hash *pmi_args){
+    HYD_status status = HYD_SUCCESS;
+    
+    HYD_PRINT(stdout, "processing fn_preput\n");
+ fn_exit:
     HYD_FUNC_EXIT();
     return status;
 

@@ -1,4 +1,4 @@
-/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
+-*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
  *  (C) 2017 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -72,6 +72,7 @@ int *contig_pids;
 int **exitcodes;
 int **exitcode_node_ids;
 int *n_proxy_exitcodes;
+static int new_pgid = 0;
 
 static void signal_cb(int signum)
 {
@@ -492,8 +493,9 @@ static HYD_status initiate_process_launch(struct mpiexec_pg *pg)
     char *kvsname;
     HYD_status status = HYD_SUCCESS;
 
+    HYD_PRINT(stdout, "Initiate process launch for %d\n", new_pgid);
     HYD_MALLOC(kvsname, char *, PMI_MAXKVSLEN, status);
-    MPL_snprintf(kvsname, PMI_MAXKVSLEN, "kvs_%d_0", (int) getpid());
+    MPL_snprintf(kvsname, PMI_MAXKVSLEN, "kvs_%d_%d", (int) getpid(), new_pgid);
 
     MPL_VG_MEM_INIT(&cmd, sizeof(cmd));
     cmd.type = MPX_CMD_TYPE__KVSNAME;
@@ -572,19 +574,17 @@ static HYD_status compute_pmi_process_mapping(struct mpiexec_pg *pg)
     goto fn_exit;
 }
 
+static HYD_status control_cb(int fd, HYD_dmx_event_t events, void *userp);
+
 static HYD_status do_spawn(int fd, struct mpiexec_pg *curr_pg, char *mcmd_args[], int mcmd_num_args){
     HYD_status status = HYD_SUCCESS;
     HYD_PRINT(stdout, "do_spawn is reached\n");
     struct mpiexec_pg *pg, *tmp, *new_pg;
     int sent, recvd, closed;
 
-    /*    system("pstree mbanin");
-          HYD_PRINT(stdout, "Is bstrap proxy a leftover?\n"); */
-
     /* Build a new process group */
-    int new_pgid = 0;
     MPL_HASH_ITER(hh, mpiexec_pg_hash, pg, tmp) {
-        HYD_PRINT(stdout, "pgid = %d is already in use\n", pg->pgid);
+        /*        HYD_PRINT(stdout, "pgid = %d is already in use\n", pg->pgid);*/
         if(pg->pgid + 1 > new_pgid)
             new_pgid = pg->pgid + 1;
     } 
@@ -600,15 +600,13 @@ static HYD_status do_spawn(int fd, struct mpiexec_pg *curr_pg, char *mcmd_args[]
     HYD_PRINT(stdout, "Allocated new process group\n");
 
     
-    /* FIXME: set pg->num_downstream from mcmd_args */
-    /* TODO: fill in HYD_exec with binary -//- */
+    /* FIXME: set pg->num_downstream & binary name from mcmd_args */
     new_pg->num_downstream = 1;
     new_pg->total_proc_count = 1;
 
-    /* FIXME: exec_list is (null) till we allocate it */
     HYD_exec_alloc(&new_pg->exec_list);
-     new_pg->exec_list->exec[0] = MPL_strdup("a.out");
-     new_pg->exec_list->exec[1] = NULL;
+    new_pg->exec_list->exec[0] = MPL_strdup("a.out");
+    new_pg->exec_list->exec[1] = NULL;
     new_pg->exec_list->proc_count = 1;
 
     /*  Fill new_pg node_list */
@@ -642,14 +640,6 @@ static HYD_status do_spawn(int fd, struct mpiexec_pg *curr_pg, char *mcmd_args[]
     args[i++] = HYD_str_from_int(mpiexec_params.usize);
     args[i++] = NULL;
 
-    /*    HYD_PRINT(stdout, "bstrap_setup with:\n");
-    HYD_PRINT(stdout, "base_path = %s\n", mpiexec_params.base_path);
-    HYD_PRINT(stdout, "port_range = %s\n", mpiexec_params.port_range);
-    HYD_PRINT(stdout, "num_downstream = %d\n", new_pg->num_downstream);
-    HYD_PRINT(stdout, "node_count = %d\n", new_pg->node_count);
-    HYD_PRINT(stdout, "len(node_list) = %d\n", mpiexec_params.global_node_count);
-    HYD_PRINT(stdout, "...\n"); */
-
     status =
         HYD_bstrap_setup(mpiexec_params.base_path, mpiexec_params.launcher,
                          mpiexec_params.launcher_exec, new_pg->node_count, mpiexec_params.global_node_list, -1,
@@ -671,7 +661,51 @@ static HYD_status do_spawn(int fd, struct mpiexec_pg *curr_pg, char *mcmd_args[]
         new_pg->downstream.kvcache_num_blocks[i] = 0;
     }
 
-    /* TODO: Set PMI_SPAWNED in env. list of a child process */
+    /* Pass preput to subordinate 
+    for (i = 0; i < new_pg->num_downstream; i++) {
+        cmd.type = MPX_CMD_TYPE__KVCACHE_OUT;
+        cmd.u.kvcache.pgid = new_pg->pgid;  
+        cmd.u.kvcache.num_blocks = kvcache_num_blocks[i];
+        cmd.data_len = kvcache_size[i];
+
+        status =
+            HYD_sock_write(hash->key, &cmd, sizeof(cmd), &sent, &closed,
+                           HYD_SOCK_COMM_TYPE__BLOCKING);
+        HYD_ERR_POP(status, "error sending kvcache cmd downstream\n");
+
+        for (i = 0; i < pg->num_downstream; i++) {
+            if (pg->downstream.kvcache_num_blocks[i]) {
+                status =
+                    HYD_sock_write(hash->key, pg->downstream.kvcache[i],
+                                   2 * pg->downstream.kvcache_num_blocks[i] * sizeof(int),
+                                   &sent, &closed, HYD_SOCK_COMM_TYPE__BLOCKING);
+                HYD_ERR_POP(status, "error sending kvcache cmd downstream\n");
+            }
+        }
+        
+        for (i = 0; i < pg->num_downstream; i++) {
+            if (pg->downstream.kvcache_num_blocks[i]) {
+                status =
+                    HYD_sock_write(hash->key,
+                                   ((char *) pg->downstream.kvcache[i]) +
+                                   2 * pg->downstream.kvcache_num_blocks[i] * sizeof(int),
+                                   pg->downstream.kvcache_size[i] -
+                                   2 * pg->downstream.kvcache_num_blocks[i] * sizeof(int),
+                                   &sent, &closed, HYD_SOCK_COMM_TYPE__BLOCKING);
+                HYD_ERR_POP(status, "error sending kvcache cmd downstream\n");
+            }
+        }
+     }
+*/
+
+    /* Set PMI_SPAWNED in env. list of a child process */
+    HYD_REALLOC(mpiexec_params.primary.env, char **,
+                (mpiexec_params.primary.envcount + 1) * sizeof(char *), status);
+    mpiexec_params.primary.env[mpiexec_params.primary.envcount] =
+        MPL_strdup("PMI_SPAWNED=1");
+    mpiexec_params.primary.envcount++;
+
+    /* Do preparation to execute child */
     status = push_env_downstream(new_pg);
     HYD_ERR_POP(status, "error setting up the env propagation\n");
 
@@ -684,12 +718,37 @@ static HYD_status do_spawn(int fd, struct mpiexec_pg *curr_pg, char *mcmd_args[]
     status = push_mapping_info_downstream(new_pg);
     HYD_ERR_POP(status, "error setting up the pmi process mapping propagation\n");
 
-    status = initiate_process_launch(new_pg);
+    /* TODO: Do a preput from mcmd contents */
+    char buf[1024];
+    rc = MPL_snprintf( buf, PMIU_MAXLINE, "cmd=put kvsname=%s key=%s value=%s\n", kvsname, key, value);
+    /* Q: What is cmd, put? */
+    /* HYD_sock_write(hash->key, buf, cmd.data_len, &sent, &closed, HYD_SOCK_COMM_TYPE__BLOCKING); */
+
+    /* Is there a trivial way to insert them as strings? */ 
+    HYD_PRINT(stdout, "there was %d mcmds\n", mcmd_num_args);
+
+    /* Give different kvs_name in a new pg */
+    status = initiate_process_launch(new_pg); 
     HYD_ERR_POP(status, "error setting up the pmi_id propagation\n");
 
-    /* TODO: Do a preput from mcmd contents */
-    /* TODO: Send envvals to new inferior */
-   
+    struct HYD_int_hash *hash, *thash;
+    MPL_HASH_ITER(hh, new_pg->downstream.fd_control_hash, hash, thash) {
+        HYD_PRINT(stdout, "Would register %d if it didn't lead to infinite loop of spawns\n", hash->key);
+        status = HYD_dmx_register_fd(hash->key, HYD_DMX_POLLIN, NULL, control_cb); 
+        HYD_ERR_POP(status, "error registering control fd\n");
+    }
+
+    /* Without splices we won't have IO with new_pg */
+    MPL_HASH_ITER(hh, new_pg->downstream.fd_stdout_hash, hash, thash) {
+        status = HYD_dmx_splice(hash->key, STDOUT_FILENO);
+        HYD_ERR_POP(status, "error splicing stdout fd\n");
+    }
+
+    MPL_HASH_ITER(hh, new_pg->downstream.fd_stderr_hash, hash, thash) {
+        status = HYD_dmx_splice(hash->key, STDERR_FILENO);
+        HYD_ERR_POP(status, "error splicing stderr fd\n");
+    }
+
     /* Inform initiator spawn succeeded */
     char *cmd;
     struct HYD_string_stash stash;
@@ -703,6 +762,7 @@ static HYD_status do_spawn(int fd, struct mpiexec_pg *curr_pg, char *mcmd_args[]
     HYD_ERR_POP(status, "error writing PMI line\n");
     MPL_free(cmd);
 
+    HYD_PRINT(stdout, "do_spawn has finished executing\n"); 
  fn_fail:;
     return status;
 }
@@ -714,7 +774,7 @@ static HYD_status control_cb(int fd, HYD_dmx_event_t events, void *userp)
     char *buf;
     struct mpiexec_pg *pg = NULL;
     HYD_status status = HYD_SUCCESS;
-
+    
     HYD_FUNC_ENTER();
 
     status = HYD_sock_read(fd, &cmd, sizeof(cmd), &recvd, &closed, HYD_SOCK_COMM_TYPE__BLOCKING);
@@ -726,8 +786,9 @@ static HYD_status control_cb(int fd, HYD_dmx_event_t events, void *userp)
         close(fd);
         goto fn_exit;
     }
-
+    HYD_PRINT(stdout, "Recieved some command from downstream\n");
     if (cmd.type == MPX_CMD_TYPE__PMI_BARRIER_IN) {
+        HYD_PRINT(stdout, "Recieved a barrier in from %d\n", &cmd.u.barrier_in.pgid);
         MPL_HASH_FIND_INT(mpiexec_pg_hash, &cmd.u.barrier_in.pgid, pg);
 
         status = mpiexec_pmi_barrier(pg);
@@ -847,7 +908,7 @@ static HYD_status control_cb(int fd, HYD_dmx_event_t events, void *userp)
                 HYD_ERR_POP(status, "error reading data\n");
                 HYD_ASSERT(!closed, status);
 
-                HYD_PRINT(stdout, "mpiexec got %s\n", buf);
+                /*                HYD_PRINT(stdout, "mpiexec got %s\n", buf);*/
 
                 int mcmd_num_args = 0;
                 char *ip = buf, *nip = buf;
@@ -864,7 +925,7 @@ static HYD_status control_cb(int fd, HYD_dmx_event_t events, void *userp)
                     nip = strchr(ip, '\n');
                     if(nip){
                         *nip = '\0';
-                        HYD_PRINT(stdout, "token: %s\n", ip);
+                        /*HYD_PRINT(stdout, "token: %s\n", ip);*/
                         mcmd_args[i] = MPL_strdup(ip);
                         ip = nip + 1;
                     }
@@ -916,7 +977,7 @@ int main(int argc, char **argv)
         MPL_env2str("MPIEXEC_PORT_RANGE", (const char **) &mpiexec_params.port_range))
         mpiexec_params.port_range = MPL_strdup(mpiexec_params.port_range);
 
-    HYD_PRINT(stdout, "(post inital portrange detection) port_range = %s\n", mpiexec_params.port_range);
+    /*    HYD_PRINT(stdout, "(post inital portrange detection) port_range = %s\n", mpiexec_params.port_range);*/
     if (mpiexec_params.debug == -1 && MPL_env2bool("HYDRA_DEBUG", &mpiexec_params.debug) == 0)
         mpiexec_params.debug = 0;
 
