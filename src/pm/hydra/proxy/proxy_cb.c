@@ -165,6 +165,23 @@ HYD_status proxy_upstream_control_cb(int fd, HYD_dmx_event_t events, void *userp
 
         status = cmd_bcast_non_root(fd, cmd, (void **) &buf);
         HYD_ERR_POP(status, "error forwarding cmd downstream\n");
+        
+        struct HYD_string_stash stash;
+        HYD_STRING_STASH_INIT(stash);
+        for(i = 0; i < cmd.data_len; ++i){
+            if(buf[i] <= ' '){
+                HYD_STRING_STASH(stash, MPL_strdup("\\"), status);
+                HYD_STRING_STASH(stash, HYD_str_from_int((int) buf[i]), status);
+            }else{
+                char tmp = buf[i + 1];
+                buf[i + 1] = '\0';
+                HYD_STRING_STASH(stash, MPL_strdup(buf+i), status);
+                buf[i + 1] = tmp;
+            }
+        }
+        char *ptmp;
+        HYD_STRING_SPIT(stash, ptmp, status);
+        HYD_PRINT(stdout, "KVCACHE_OUT %s\n", ptmp);
 
         status =
             proxy_pmi_kvcache_out(cmd.u.kvcache.num_blocks, (int *) buf,
@@ -173,6 +190,7 @@ HYD_status proxy_upstream_control_cb(int fd, HYD_dmx_event_t events, void *userp
         HYD_ERR_POP(status, "error inserting keys into kvcache\n");
 
         MPL_free(buf);
+        HYD_PRINT(stdout, "done with kvcache_out\n");
     }
     else if (cmd.type == MPX_CMD_TYPE__PMI_BARRIER_OUT) {
         status = proxy_barrier_out(-1, NULL);

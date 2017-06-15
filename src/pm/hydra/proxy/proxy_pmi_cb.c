@@ -170,16 +170,18 @@ HYD_status proxy_pmi_kvcache_out(int num_blocks, int *kvlen, char *kvcache, int 
     int i;
     struct proxy_kv_hash *hash;
     HYD_status status = HYD_SUCCESS;
+    HYD_PRINT(stdout, "kvcache_out for %d blocks\n", num_blocks);
 
     for (i = 0; i < 2 * num_blocks;) {
         HYD_MALLOC(hash, struct proxy_kv_hash *, sizeof(struct proxy_kv_hash), status);
-
+        
+        HYD_PRINT(stdout, "%p = %s\n", kvcache, kvcache);
         hash->key = MPL_strdup(kvcache);
         kvcache += kvlen[i];
         hash->val = MPL_strdup(kvcache);
         kvcache += kvlen[i + 1];
         i += 2;
-
+        
         MPL_HASH_ADD_STR(kvlist, key, hash);
     }
 

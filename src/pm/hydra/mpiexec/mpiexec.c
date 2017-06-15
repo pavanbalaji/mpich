@@ -1,4 +1,4 @@
--*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
  *  (C) 2017 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -601,13 +601,16 @@ static HYD_status do_spawn(int fd, struct mpiexec_pg *curr_pg, char *mcmd_args[]
 
     
     /* FIXME: set pg->num_downstream & binary name from mcmd_args */
+    /*       if(!strncmp("argcnt=", mcmd_args[i], strlen("argcnt="))){
+             TODO: modify exec_list for passing arguments to spawned
+             } */
     new_pg->num_downstream = 1;
     new_pg->total_proc_count = 1;
 
     HYD_exec_alloc(&new_pg->exec_list);
     new_pg->exec_list->exec[0] = MPL_strdup("a.out");
     new_pg->exec_list->exec[1] = NULL;
-    new_pg->exec_list->proc_count = 1;
+    new_pg->exec_list->proc_count = 1; /* */
 
     /*  Fill new_pg node_list */
     new_pg->node_count = mpiexec_params.global_node_count;
@@ -661,42 +664,72 @@ static HYD_status do_spawn(int fd, struct mpiexec_pg *curr_pg, char *mcmd_args[]
         new_pg->downstream.kvcache_num_blocks[i] = 0;
     }
 
-    /* Pass preput to subordinate 
-    for (i = 0; i < new_pg->num_downstream; i++) {
-        cmd.type = MPX_CMD_TYPE__KVCACHE_OUT;
-        cmd.u.kvcache.pgid = new_pg->pgid;  
-        cmd.u.kvcache.num_blocks = kvcache_num_blocks[i];
-        cmd.data_len = kvcache_size[i];
+    /* Parse preput */
+    struct HYD_string_stash stash;
+    HYD_STRING_STASH_INIT(stash);
 
-        status =
-            HYD_sock_write(hash->key, &cmd, sizeof(cmd), &sent, &closed,
-                           HYD_SOCK_COMM_TYPE__BLOCKING);
-        HYD_ERR_POP(status, "error sending kvcache cmd downstream\n");
+    int preput_num = 0;
+    HYD_PRINT(stdout, "# of items: %d\n", mcmd_num_args);
+    for(i = 0; i < mcmd_num_args; ++i){
+        if (strncmp(mcmd_args[i], "preput_num=", strlen("preput_num=")) == 0){
+            preput_num = atoi(mcmd_args[i] + strlen("preput_num="));
+            HYD_PRINT(stdout, "preput_num = %d\n", preput_num);
+            break; /* FIXME: for multi-spawn */
+        }
+    }
 
-        for (i = 0; i < pg->num_downstream; i++) {
-            if (pg->downstream.kvcache_num_blocks[i]) {
-                status =
-                    HYD_sock_write(hash->key, pg->downstream.kvcache[i],
-                                   2 * pg->downstream.kvcache_num_blocks[i] * sizeof(int),
-                                   &sent, &closed, HYD_SOCK_COMM_TYPE__BLOCKING);
-                HYD_ERR_POP(status, "error sending kvcache cmd downstream\n");
-            }
-        }
-        
-        for (i = 0; i < pg->num_downstream; i++) {
-            if (pg->downstream.kvcache_num_blocks[i]) {
-                status =
-                    HYD_sock_write(hash->key,
-                                   ((char *) pg->downstream.kvcache[i]) +
-                                   2 * pg->downstream.kvcache_num_blocks[i] * sizeof(int),
-                                   pg->downstream.kvcache_size[i] -
-                                   2 * pg->downstream.kvcache_num_blocks[i] * sizeof(int),
-                                   &sent, &closed, HYD_SOCK_COMM_TYPE__BLOCKING);
-                HYD_ERR_POP(status, "error sending kvcache cmd downstream\n");
-            }
-        }
-     }
-*/
+    char *key, *val;
+    int j;
+    int *kvlen; HYD_MALLOC(kvlen, int*, sizeof(int) * preput_num * 2, status);
+    for(j = 0; j < 2 * preput_num; ++j){
+        int k;
+        for(k = 0; k < sizeof(int); ++k)
+            HYD_STRING_STASH(stash, MPL_strdup("_"), status);
+    }
+
+    for(++i, j = 0; j < preput_num; ++j, i+= 2){
+        strtok(mcmd_args[i], "="); 
+        key = MPL_strdup(strtok(NULL, "="));
+        HYD_STRING_STASH(stash, MPL_strdup(key), status);
+        HYD_STRING_STASH(stash, MPL_strdup("!"), status);
+
+        strtok(mcmd_args[i + 1], "="); 
+        val = MPL_strdup(strtok(NULL, "="));
+        HYD_STRING_STASH(stash, MPL_strdup(val), status);
+        HYD_STRING_STASH(stash, MPL_strdup("!"), status);
+
+        kvlen[2 * j] = strlen(key) + 1;
+        kvlen[2 * j + 1] = strlen(val) + 1;
+        HYD_PRINT(stdout, "%s -> %s\n", key, val);
+    }
+
+    /* Send the preput */
+    struct MPX_cmd cmd;
+    MPL_VG_MEM_INIT(&cmd, sizeof(cmd));
+    cmd.type = MPX_CMD_TYPE__KVCACHE_OUT;
+    cmd.u.kvcache.num_blocks = preput_num;
+
+    char *data;
+    HYD_STRING_SPIT(stash, data, status);    /* FIXME: memory corruption */
+    HYD_PRINT(stdout, ":: %s\n", data);
+
+    cmd.data_len = strlen(data) + 1;
+
+    for( i = 0; i < cmd.data_len; ++i)
+        if (data[i] == '!')
+            data[i] = '\0';
+    /*
+    for(j = 0; j < preput_num; ++j){
+        HYD_PRINT(stdout, ":: %d %d\n", kvlen[2*j], kvlen[2*j+1]);
+        }*/
+    memcpy(data, kvlen, sizeof(int) * 2 * preput_num);    
+
+
+    status = cmd_bcast_root(cmd, new_pg, data);
+    HYD_ERR_POP(status, "error pushing generic command downstream\n");
+
+    MPL_free(data);
+
 
     /* Set PMI_SPAWNED in env. list of a child process */
     HYD_REALLOC(mpiexec_params.primary.env, char **,
@@ -718,22 +751,14 @@ static HYD_status do_spawn(int fd, struct mpiexec_pg *curr_pg, char *mcmd_args[]
     status = push_mapping_info_downstream(new_pg);
     HYD_ERR_POP(status, "error setting up the pmi process mapping propagation\n");
 
-    /* TODO: Do a preput from mcmd contents */
-    char buf[1024];
-    rc = MPL_snprintf( buf, PMIU_MAXLINE, "cmd=put kvsname=%s key=%s value=%s\n", kvsname, key, value);
-    /* Q: What is cmd, put? */
-    /* HYD_sock_write(hash->key, buf, cmd.data_len, &sent, &closed, HYD_SOCK_COMM_TYPE__BLOCKING); */
-
-    /* Is there a trivial way to insert them as strings? */ 
-    HYD_PRINT(stdout, "there was %d mcmds\n", mcmd_num_args);
-
     /* Give different kvs_name in a new pg */
     status = initiate_process_launch(new_pg); 
     HYD_ERR_POP(status, "error setting up the pmi_id propagation\n");
 
+
     struct HYD_int_hash *hash, *thash;
     MPL_HASH_ITER(hh, new_pg->downstream.fd_control_hash, hash, thash) {
-        HYD_PRINT(stdout, "Would register %d if it didn't lead to infinite loop of spawns\n", hash->key);
+        /*HYD_PRINT(stdout, "Would register %d if it didn't lead to infinite loop of spawns\n", hash->key);*/
         status = HYD_dmx_register_fd(hash->key, HYD_DMX_POLLIN, NULL, control_cb); 
         HYD_ERR_POP(status, "error registering control fd\n");
     }
@@ -750,17 +775,16 @@ static HYD_status do_spawn(int fd, struct mpiexec_pg *curr_pg, char *mcmd_args[]
     }
 
     /* Inform initiator spawn succeeded */
-    char *cmd;
-    struct HYD_string_stash stash;
+    char *cmd_str;
     HYD_STRING_STASH_INIT(stash);
     HYD_STRING_STASH(stash, MPL_strdup("cmd=spawn_result rc=0"), status);
     HYD_STRING_STASH(stash, strdup("\n"), status);
 
-    HYD_STRING_SPIT(stash, cmd, status);
+    HYD_STRING_SPIT(stash, cmd_str, status);
     
-    status = HYD_sock_write(fd, cmd, strlen(cmd), &sent, &closed, HYD_SOCK_COMM_TYPE__BLOCKING);
+    status = HYD_sock_write(fd, cmd_str, strlen(cmd_str), &sent, &closed, HYD_SOCK_COMM_TYPE__BLOCKING);
     HYD_ERR_POP(status, "error writing PMI line\n");
-    MPL_free(cmd);
+    MPL_free(cmd_str);
 
     HYD_PRINT(stdout, "do_spawn has finished executing\n"); 
  fn_fail:;
@@ -786,7 +810,7 @@ static HYD_status control_cb(int fd, HYD_dmx_event_t events, void *userp)
         close(fd);
         goto fn_exit;
     }
-    HYD_PRINT(stdout, "Recieved some command from downstream\n");
+    /*HYD_PRINT(stdout, "Recieved some command from downstream\n");*/
     if (cmd.type == MPX_CMD_TYPE__PMI_BARRIER_IN) {
         HYD_PRINT(stdout, "Recieved a barrier in from %d\n", &cmd.u.barrier_in.pgid);
         MPL_HASH_FIND_INT(mpiexec_pg_hash, &cmd.u.barrier_in.pgid, pg);
@@ -930,8 +954,9 @@ static HYD_status control_cb(int fd, HYD_dmx_event_t events, void *userp)
                         ip = nip + 1;
                     }
                 }
-                mcmd_args[mcmd_num_args - 1] = NULL;
-                HYD_PRINT(stdout, "Saving %d lines\n", mcmd_num_args);
+                --mcmd_num_args; /* */
+                mcmd_args[mcmd_num_args] = NULL;
+                /* HYD_PRINT(stdout, "Saving %d lines\n", mcmd_num_args); */
 
                 do_spawn(fd, pg, mcmd_args, mcmd_num_args);
     }
