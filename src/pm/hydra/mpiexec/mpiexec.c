@@ -576,6 +576,33 @@ static HYD_status compute_pmi_process_mapping(struct mpiexec_pg *pg)
 
 static HYD_status control_cb(int fd, HYD_dmx_event_t events, void *userp);
 
+/*
+static HYD_status cmd_response(int fd, const char *str)
+{
+    int len = strlen(str) + 1;
+    int sent, closed;
+    HYD_status status = HYD_SUCCESS;
+
+    HYD_FUNC_ENTER();
+
+    status = HYD_sock_write(fd, &len, sizeof(int), &sent, &closed, HYD_SOCK_COMM_TYPE__BLOCKING);
+    HYD_ERR_POP(status, "error sending publish info\n");
+    HYD_ASSERT(!closed, status);
+
+    if (len) {
+        status = HYD_sock_write(fd, str, len, &sent, &closed, HYD_SOCK_COMM_TYPE__BLOCKING);
+        HYD_ERR_POP(status, "error sending publish info\n");
+        HYD_ASSERT(!closed, status);
+    }
+
+ fn_exit:
+    HYD_FUNC_EXIT();
+    return status;
+
+ fn_fail:
+    goto fn_exit;
+    }*/
+
 static HYD_status do_spawn(int fd, struct mpiexec_pg *curr_pg, char *mcmd_args[], int mcmd_num_args){
     HYD_status status = HYD_SUCCESS;
     HYD_PRINT(stdout, "do_spawn is reached\n");
@@ -669,11 +696,11 @@ static HYD_status do_spawn(int fd, struct mpiexec_pg *curr_pg, char *mcmd_args[]
     HYD_STRING_STASH_INIT(stash);
 
     int preput_num = 0;
-    HYD_PRINT(stdout, "# of items: %d\n", mcmd_num_args);
+    /*HYD_PRINT(stdout, "# of items: %d\n", mcmd_num_args);*/
     for(i = 0; i < mcmd_num_args; ++i){
         if (strncmp(mcmd_args[i], "preput_num=", strlen("preput_num=")) == 0){
             preput_num = atoi(mcmd_args[i] + strlen("preput_num="));
-            HYD_PRINT(stdout, "preput_num = %d\n", preput_num);
+            /*HYD_PRINT(stdout, "preput_num = %d\n", preput_num);*/
             break; /* FIXME: for multi-spawn */
         }
     }
@@ -710,8 +737,8 @@ static HYD_status do_spawn(int fd, struct mpiexec_pg *curr_pg, char *mcmd_args[]
     cmd.u.kvcache.num_blocks = preput_num;
 
     char *data;
-    HYD_STRING_SPIT(stash, data, status);    /* FIXME: memory corruption */
-    HYD_PRINT(stdout, ":: %s\n", data);
+    HYD_STRING_SPIT(stash, data, status);   
+    /*HYD_PRINT(stdout, ":: %s\n", data);*/
 
     cmd.data_len = strlen(data) + 1;
 
@@ -775,18 +802,15 @@ static HYD_status do_spawn(int fd, struct mpiexec_pg *curr_pg, char *mcmd_args[]
     }
 
     /* Inform initiator spawn succeeded */
-    char *cmd_str;
-    HYD_STRING_STASH_INIT(stash);
-    HYD_STRING_STASH(stash, MPL_strdup("cmd=spawn_result rc=0"), status);
-    HYD_STRING_STASH(stash, strdup("\n"), status);
-
-    HYD_STRING_SPIT(stash, cmd_str, status);
-    
-    status = HYD_sock_write(fd, cmd_str, strlen(cmd_str), &sent, &closed, HYD_SOCK_COMM_TYPE__BLOCKING);
-    HYD_ERR_POP(status, "error writing PMI line\n");
-    MPL_free(cmd_str);
-
-    HYD_PRINT(stdout, "do_spawn has finished executing\n"); 
+    MPL_VG_MEM_INIT(&cmd, sizeof(cmd));
+    /* TODO: pass an int to indicate if spawn succeeded */
+    cmd.type = MPX_CMD_TYPE__SPAWN_OUT;
+    cmd.data_len = 0;
+    status =
+        HYD_sock_write(fd, &cmd, sizeof(cmd), &sent, &closed,
+                       HYD_SOCK_COMM_TYPE__BLOCKING);
+    HYD_ERR_POP(status, "error sending cwd cmd to proxy\n");
+    HYD_ASSERT(!closed, status);
  fn_fail:;
     return status;
 }

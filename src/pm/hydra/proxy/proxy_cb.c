@@ -204,6 +204,23 @@ HYD_status proxy_upstream_control_cb(int fd, HYD_dmx_event_t events, void *userp
             HYD_ERR_POP(status, "error writing command\n");
             HYD_ASSERT(!closed, status);
         }
+    }else if(cmd.type == MPX_CMD_TYPE__SPAWN_OUT) {
+        HYD_PRINT(stdout, "spawn is out, do smth\n");
+        /* For these it's not enought to just pass the command along */
+        /* TODO: Move it to fn_spawn, or add some state? 
+        char *cmd_str = MPL_strdup("cmd=spawn_result rc=0\n");
+        int cnt = 0;
+        MPL_HASH_ITER(hh, proxy_params.immediate.proxy.fd_control_hash, hash, tmp) {
+            HYD_PRINT(stdout, "reporting success to fd = %d\n", hash->key);
+            HYD_sock_write(hash->key, &cmd_str, strlen(cmd_str), &sent, &closed,
+                               HYD_SOCK_COMM_TYPE__BLOCKING);
+            HYD_ERR_POP(status, "error writing PMI line\n");
+            HYD_PRINT(stdout, "do_spawn wrote '%s' response to %d\n", cmd_str, fd); 
+            ++cnt;
+        }
+        HYD_PRINT(stdout, "rolled over all %d of the subordinates\n", cnt);
+        MPL_free(cmd_str);*/
+
     }
 
   fn_exit:

@@ -560,6 +560,41 @@ static HYD_status fn_abort(int fd, struct proxy_kv_hash *pmi_args)
 }
 
 static struct HYD_string_stash stash;
+
+#define PMIU_MAXLINE 1024
+
+static int PMIU_writeline( int fd, char *buf )	
+{
+    int    n;
+    size_t size;
+
+    size = strlen( buf );
+    if ( size > PMIU_MAXLINE ) {
+	buf[PMIU_MAXLINE-1] = '\0';
+	printf( "write_line: message string too big: :%s:\n", buf );
+    }
+    else if ( buf[strlen( buf ) - 1] != '\n' )  /* error:  no newline at end */
+	    printf( "write_line: message string doesn't end in newline: :%s:\n",
+		       buf );
+    else {
+	do {
+            /* We assume that the size of any buf to be written fits
+               in an int.  For the PMI interface, this should always 
+               be true */
+	    n = (int)write( fd, buf, size );
+	} while (n == -1 && errno == EINTR);
+
+	if ( n < 0 ) {
+	    printf( "write_line error; fd=%d buf=:%s:\n", fd, buf );
+	    perror("system msg for write_line failure ");
+	    return(-1);
+	}
+	if ( n < size)
+	    printf( "write_line failed to write entire message\n" );
+    }
+    return 0;
+}
+
 static HYD_status fn_spawn(int fd, struct proxy_kv_hash *pmi_args){
     HYD_status status = HYD_SUCCESS;
     int sent, closed;
@@ -598,6 +633,18 @@ static HYD_status fn_spawn(int fd, struct proxy_kv_hash *pmi_args){
         HYD_PRINT(stdout, "Entered proxy_pmi_cb.c:fn_spawn successfully forwarded the packet upstream\n");
     }
     HYD_PRINT(stdout, "proxy_pmi_cb.c::fn_spawn have finished executing\n");
+    /* HACK: ignore real success of spawning, report rc=0 */
+        char cmd_str [PMIU_MAXLINE] = "cmd=spawn_result rc=0\n";
+        
+        HYD_PRINT(stdout, "reporting success to fd = %d\n", fd);
+        PMIU_writeline(fd, cmd_str);
+        //HYD_sock_write(fd, &cmd_str, strlen(cmd_str), &sent, &closed,
+        //                       HYD_SOCK_COMM_TYPE__BLOCKING);
+        HYD_ERR_POP(status, "error writing PMI line\n");
+        HYD_PRINT(stdout, "fn_spawn wrote '%s' response to %d\n", cmd_str, fd);
+
+        /* MPL_free(cmd_str);*/
+
   fn_exit:
     HYD_FUNC_EXIT();
     return status;

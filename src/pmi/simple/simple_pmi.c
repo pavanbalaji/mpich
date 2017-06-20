@@ -699,7 +699,10 @@ int PMI_Spawn_multiple(int count,
 	}
     }
 
+    printf("[simple_pmi] waiting for return from mpiexec through %d\n", PMI_fd);
     PMIU_readline( PMI_fd, buf, PMIU_MAXLINE );
+    printf("[simple_pmi] got a line from superior proxy\n");
+    return PMI_SUCCESS; /* does it sigsegv later? */
     PMIU_parse_keyvals( buf ); 
     PMIU_getval( "cmd", cmd, PMIU_MAXLINE );
     if ( strncmp( cmd, "spawn_result", PMIU_MAXLINE ) != 0 ) {
@@ -717,7 +720,7 @@ int PMI_Spawn_multiple(int count,
 	    return PMI_FAIL;
 	}
     }
-    
+
     PMIU_Assert(errors != NULL);
     if (PMIU_getval( "errcodes", tempbuf, PMIU_MAXLINE )) {
         num_errcodes_found = 0;

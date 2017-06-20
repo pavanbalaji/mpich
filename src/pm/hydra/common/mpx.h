@@ -26,6 +26,7 @@ enum MPX_cmd_type {
     MPX_CMD_TYPE__PMI_PROCESS_MAPPING,
     MPX_CMD_TYPE__SIGNAL,
     MPX_CMD_TYPE__PREPUT,
+    MPX_CMD_TYPE__SPAWN_OUT,
 
     /* downstream to upstream */
     MPX_CMD_TYPE__PMI_BARRIER_IN,
