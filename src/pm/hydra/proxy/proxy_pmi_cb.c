@@ -611,18 +611,6 @@ static HYD_status fn_spawn(int fd, struct proxy_kv_hash *pmi_args){
     goto fn_exit;
 }
 
-static HYD_status fn_preput(int fd, struct proxy_kv_hash *pmi_args){
-    HYD_status status = HYD_SUCCESS;
-    
-    HYD_PRINT(stdout, "processing fn_preput\n");
- fn_exit:
-    HYD_FUNC_EXIT();
-    return status;
-
-  fn_fail:
-    goto fn_exit;
-}
-
 static struct proxy_pmi_handle pmi_handlers[] = {
     {"init", fn_init},
     {"get_maxes", fn_get_maxes},

@@ -49,40 +49,6 @@ static HYD_status cmd_bcast_non_root(int fd, struct MPX_cmd cmd, void **data)
     goto fn_exit;
 }
 
-#define PMIU_MAXLINE 1024
-
-static int PMIU_writeline( int fd, char *buf )	
-{
-    int    n;
-    size_t size;
-
-    size = strlen( buf );
-    if ( size > PMIU_MAXLINE ) {
-	buf[PMIU_MAXLINE-1] = '\0';
-	printf( "write_line: message string too big: :%s:\n", buf );
-    }
-    else if ( buf[strlen( buf ) - 1] != '\n' )  /* error:  no newline at end */
-	    printf( "write_line: message string doesn't end in newline: :%s:\n",
-		       buf );
-    else {
-	do {
-            /* We assume that the size of any buf to be written fits in an int.  
-               For the PMI interface, this should always be true 
-            */
-	    n = (int)write( fd, buf, size );
-	} while (n == -1 && errno == EINTR);
-
-	if ( n < 0 ) {
-	    printf( "write_line error; fd=%d buf=:%s:\n", fd, buf );
-	    perror("system msg for write_line failure ");
-	    return(-1);
-	}
-	if ( n < size)
-	    printf( "write_line failed to write entire message\n" );
-    }
-    return 0;
-}
-
 HYD_status proxy_upstream_control_cb(int fd, HYD_dmx_event_t events, void *userp)
 {
     struct MPX_cmd cmd;
@@ -215,7 +181,6 @@ HYD_status proxy_upstream_control_cb(int fd, HYD_dmx_event_t events, void *userp
         }
         char *ptmp;
         HYD_STRING_SPIT(stash, ptmp, status);
-        HYD_PRINT(stdout, "KVCACHE_OUT %s\n", ptmp);
 
         status =
             proxy_pmi_kvcache_out(cmd.u.kvcache.num_blocks, (int *) buf,
@@ -239,16 +204,21 @@ HYD_status proxy_upstream_control_cb(int fd, HYD_dmx_event_t events, void *userp
             HYD_ASSERT(!closed, status);
         }
     }else if(cmd.type == MPX_CMD_TYPE__SPAWN_OUT) {
-        HYD_PRINT(stdout, "spawn is out, (%d != %d)\n", fd, spawn_report_fd);
-        
-        /* FIXME: Don't ignore actual success of spawning */
-        char *cmd_str = MPL_strdup("cmd=spawn_result rc=0\n");
+        HYD_PRINT(stdout, "spawn returned %d\n", cmd.u.spawn_result.status);
 
-        HYD_PRINT(stdout, "reporting success to fd = %d\n", spawn_report_fd);
-        PMIU_writeline(spawn_report_fd, cmd_str);
+        struct HYD_string_stash stash;
+        char *cmd_str;
+        HYD_STRING_STASH_INIT(stash);
+        HYD_STRING_STASH(stash, MPL_strdup("cmd=spawn_result rc="), status);
+        HYD_STRING_STASH(stash, HYD_str_from_int(cmd.u.spawn_result.status), status);
+        HYD_STRING_STASH(stash, MPL_strdup("\n"), status);
+        HYD_STRING_SPIT(stash, cmd_str, status);
 
+        int n;
+        do {
+	    n = (int)write( spawn_report_fd, cmd_str, strlen(cmd_str));
+	} while (n == -1 && errno == EINTR);
         HYD_ERR_POP(status, "error writing PMI line\n");
-        HYD_PRINT(stdout, "fn_spawn wrote '%s' response to %d\n", cmd_str, fd);
 
         MPL_free(cmd_str);
         spawn_report_fd = -1;

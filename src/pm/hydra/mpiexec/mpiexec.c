@@ -622,22 +622,66 @@ static HYD_status do_spawn(int fd, struct mpiexec_pg *curr_pg, char *mcmd_args[]
     status = find_launcher();
     HYD_ERR_POP(status, "unable to find a valid launcher\n");
 
-    HYD_PRINT(stdout, "Newly spawned group gets pgid = %d\n", new_pgid);
     mpiexec_alloc_pg(&new_pg, new_pgid);
-    HYD_PRINT(stdout, "Allocated new process group\n");
+
+    /* Parse mcmd */
+    struct HYD_string_stash stash;
+    HYD_STRING_STASH_INIT(stash);
+
+    char *target_binary = NULL;
+    int *kvlen; 
+
+    int preput_num = 0;
+    int i;
+    for(i = 0; i < mcmd_num_args; ++i){
+        HYD_PRINT(stdout, "%s\n", mcmd_args[i]);
+        if (strncmp(mcmd_args[i], "preput_num=", strlen("preput_num=")) == 0){
+            preput_num = atoi(mcmd_args[i] + strlen("preput_num="));
+            HYD_PRINT(stdout, "preput_num = %d\n", preput_num);
+            int j;
+            HYD_MALLOC(kvlen, int*, sizeof(int) * preput_num * 2, status);
+            for(j = 0; j < 2 * preput_num; ++j){
+                int k;
+                for(k = 0; k < sizeof(int); ++k)
+                    HYD_STRING_STASH(stash, MPL_strdup("_"), status);
+            }
+            
+            for(++i, j = 0; j < preput_num; ++j, i+= 2){
+                char *key, *val;
+                strtok(mcmd_args[i], "="); 
+                key = MPL_strdup(strtok(NULL, "="));
+                HYD_STRING_STASH(stash, MPL_strdup(key), status);
+                HYD_STRING_STASH(stash, MPL_strdup("!"), status);
+                
+                strtok(mcmd_args[i + 1], "="); 
+                val = MPL_strdup(strtok(NULL, "="));
+                HYD_STRING_STASH(stash, MPL_strdup(val), status);
+                HYD_STRING_STASH(stash, MPL_strdup("!"), status);
+                
+                kvlen[2 * j] = strlen(key) + 1;
+                kvlen[2 * j + 1] = strlen(val) + 1;
+                /* HYD_PRINT(stdout, "%s -> %s\n", key, val);*/
+            }
+        }else if (strncmp(mcmd_args[i], "execname=", strlen("execname=")) == 0){
+            target_binary = mcmd_args[i] + strlen("execname=");
+        }
+    }
+    
+    if(target_binary == NULL){
+        status = HYD_ERR_INTERNAL;
+        HYD_ERR_POP(status, "No target binary to spawn\n");
+    }
 
     
-    /* FIXME: set pg->num_downstream & binary name from mcmd_args */
-    /*       if(!strncmp("argcnt=", mcmd_args[i], strlen("argcnt="))){
-             TODO: modify exec_list for passing arguments to spawned
-             } */
+    
+    /* FIXME: use mpmd values */
     new_pg->num_downstream = 1;
     new_pg->total_proc_count = 1;
 
     HYD_exec_alloc(&new_pg->exec_list);
-    new_pg->exec_list->exec[0] = MPL_strdup("a.out");
+    new_pg->exec_list->exec[0] = MPL_strdup(target_binary);
     new_pg->exec_list->exec[1] = NULL;
-    new_pg->exec_list->proc_count = 1; /* */
+    new_pg->exec_list->proc_count = 1;
 
     /*  Fill new_pg node_list */
     new_pg->node_count = mpiexec_params.global_node_count;
@@ -647,7 +691,7 @@ static HYD_status do_spawn(int fd, struct mpiexec_pg *curr_pg, char *mcmd_args[]
     HYD_ERR_POP(status, "error computing PMI process mapping\n");
 
     char *args[1024];
-    int i = 0;
+    i = 0;
     /* Closely follow shat's being done in the main codepath */
     {
 
@@ -689,45 +733,6 @@ static HYD_status do_spawn(int fd, struct mpiexec_pg *curr_pg, char *mcmd_args[]
         new_pg->downstream.kvcache[i] = NULL;
         new_pg->downstream.kvcache_size[i] = 0;
         new_pg->downstream.kvcache_num_blocks[i] = 0;
-    }
-
-    /* Parse preput */
-    struct HYD_string_stash stash;
-    HYD_STRING_STASH_INIT(stash);
-
-    int preput_num = 0;
-    /*HYD_PRINT(stdout, "# of items: %d\n", mcmd_num_args);*/
-    for(i = 0; i < mcmd_num_args; ++i){
-        if (strncmp(mcmd_args[i], "preput_num=", strlen("preput_num=")) == 0){
-            preput_num = atoi(mcmd_args[i] + strlen("preput_num="));
-            /*HYD_PRINT(stdout, "preput_num = %d\n", preput_num);*/
-            break; /* FIXME: for multi-spawn */
-        }
-    }
-
-    char *key, *val;
-    int j;
-    int *kvlen; HYD_MALLOC(kvlen, int*, sizeof(int) * preput_num * 2, status);
-    for(j = 0; j < 2 * preput_num; ++j){
-        int k;
-        for(k = 0; k < sizeof(int); ++k)
-            HYD_STRING_STASH(stash, MPL_strdup("_"), status);
-    }
-
-    for(++i, j = 0; j < preput_num; ++j, i+= 2){
-        strtok(mcmd_args[i], "="); 
-        key = MPL_strdup(strtok(NULL, "="));
-        HYD_STRING_STASH(stash, MPL_strdup(key), status);
-        HYD_STRING_STASH(stash, MPL_strdup("!"), status);
-
-        strtok(mcmd_args[i + 1], "="); 
-        val = MPL_strdup(strtok(NULL, "="));
-        HYD_STRING_STASH(stash, MPL_strdup(val), status);
-        HYD_STRING_STASH(stash, MPL_strdup("!"), status);
-
-        kvlen[2 * j] = strlen(key) + 1;
-        kvlen[2 * j + 1] = strlen(val) + 1;
-        HYD_PRINT(stdout, "%s -> %s\n", key, val);
     }
 
     /* Send the preput */
@@ -805,6 +810,8 @@ static HYD_status do_spawn(int fd, struct mpiexec_pg *curr_pg, char *mcmd_args[]
     MPL_VG_MEM_INIT(&cmd, sizeof(cmd));
     /* TODO: pass an int to indicate if spawn succeeded */
     cmd.type = MPX_CMD_TYPE__SPAWN_OUT;
+    cmd.u.spawn_result.status = status;
+
     cmd.data_len = 0;
     status =
         HYD_sock_write(fd, &cmd, sizeof(cmd), &sent, &closed,
