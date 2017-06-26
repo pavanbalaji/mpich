@@ -588,8 +588,6 @@ int main(int argc, char **argv)
     status = HYD_print_set_prefix_str("proxy:unset");
     HYD_ERR_POP(status, "unable to set dbg prefix\n");
 
-    HYD_PRINT(stdout, "A pmi proxy is passing its stdout upstream.\n");
-
     /* To launch the MPI processes, we follow a process:
      * (1) get parameters from the bstrap, as arguments or from
      * upstream, (2) make sure all the parameters we need are

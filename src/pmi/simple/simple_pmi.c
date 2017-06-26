@@ -136,7 +136,6 @@ int PMI_Init( int *spawned )
 	return rc;
     }
 
-    printf("simple pmi_init with PMI_fd == %d\n", PMI_fd);
     if ( PMI_fd == -1 ) {
 	/* Singleton init: Process not started with mpiexec, 
 	   so set size to 1, rank to 0 */
@@ -155,7 +154,7 @@ int PMI_Init( int *spawned )
 
     /* If size, rank, and debug are not set from a communication port,
        use the environment */
-    printf("With notset %d\n", notset);
+
     if (notset) {
 	if ( ( p = getenv( "PMI_SIZE" ) ) )
 	    PMI_size = atoi( p );
@@ -207,10 +206,8 @@ int PMI_Init( int *spawned )
        rather than deliver it through the environment */
     /*    system("/bin/env");*/
     if ( ( p = getenv( "PMI_SPAWNED" ) ) ){
-        printf("do think it's spawned\n");
 	PMI_spawned = atoi( p );
     }else{
-        printf("don't think it's spawned\n");
         PMI_spawned = 0;
     }
     if (PMI_spawned)

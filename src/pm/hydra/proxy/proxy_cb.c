@@ -189,7 +189,6 @@ HYD_status proxy_upstream_control_cb(int fd, HYD_dmx_event_t events, void *userp
         HYD_ERR_POP(status, "error inserting keys into kvcache\n");
 
         MPL_free(buf);
-        HYD_PRINT(stdout, "done with kvcache_out\n");
     }
     else if (cmd.type == MPX_CMD_TYPE__PMI_BARRIER_OUT) {
         status = proxy_barrier_out(-1, NULL);
@@ -204,8 +203,6 @@ HYD_status proxy_upstream_control_cb(int fd, HYD_dmx_event_t events, void *userp
             HYD_ASSERT(!closed, status);
         }
     }else if(cmd.type == MPX_CMD_TYPE__SPAWN_OUT) {
-        HYD_PRINT(stdout, "spawn returned %d\n", cmd.u.spawn_result.status);
-
         struct HYD_string_stash stash;
         char *cmd_str;
         HYD_STRING_STASH_INIT(stash);

@@ -493,7 +493,6 @@ static HYD_status initiate_process_launch(struct mpiexec_pg *pg)
     char *kvsname;
     HYD_status status = HYD_SUCCESS;
 
-    HYD_PRINT(stdout, "Initiate process launch for %d\n", new_pgid);
     HYD_MALLOC(kvsname, char *, PMI_MAXKVSLEN, status);
     MPL_snprintf(kvsname, PMI_MAXKVSLEN, "kvs_%d_%d", (int) getpid(), new_pgid);
 
@@ -605,7 +604,6 @@ static HYD_status cmd_response(int fd, const char *str)
 
 static HYD_status do_spawn(int fd, struct mpiexec_pg *curr_pg, char *mcmd_args[], int mcmd_num_args){
     HYD_status status = HYD_SUCCESS;
-    HYD_PRINT(stdout, "do_spawn is reached\n");
     struct mpiexec_pg *pg, *tmp, *new_pg;
     int sent, recvd, closed;
 
@@ -629,6 +627,7 @@ static HYD_status do_spawn(int fd, struct mpiexec_pg *curr_pg, char *mcmd_args[]
     HYD_STRING_STASH_INIT(stash);
 
     char *target_binary = NULL;
+    int target_procs = -1;
     int *kvlen; 
 
     int preput_num = 0;
@@ -637,7 +636,6 @@ static HYD_status do_spawn(int fd, struct mpiexec_pg *curr_pg, char *mcmd_args[]
         HYD_PRINT(stdout, "%s\n", mcmd_args[i]);
         if (strncmp(mcmd_args[i], "preput_num=", strlen("preput_num=")) == 0){
             preput_num = atoi(mcmd_args[i] + strlen("preput_num="));
-            HYD_PRINT(stdout, "preput_num = %d\n", preput_num);
             int j;
             HYD_MALLOC(kvlen, int*, sizeof(int) * preput_num * 2, status);
             for(j = 0; j < 2 * preput_num; ++j){
@@ -664,24 +662,32 @@ static HYD_status do_spawn(int fd, struct mpiexec_pg *curr_pg, char *mcmd_args[]
             }
         }else if (strncmp(mcmd_args[i], "execname=", strlen("execname=")) == 0){
             target_binary = mcmd_args[i] + strlen("execname=");
+        }else if (strncmp(mcmd_args[i], "nprocs=", strlen("nprocs=")) == 0){
+            target_procs = atoi(mcmd_args[i] + strlen("nprocs="));
         }
     }
-    
+
     if(target_binary == NULL){
         status = HYD_ERR_INTERNAL;
         HYD_ERR_POP(status, "No target binary to spawn\n");
     }
 
-    
-    
     /* FIXME: use mpmd values */
-    new_pg->num_downstream = 1;
-    new_pg->total_proc_count = 1;
+    if(target_procs == -1){
+        status = HYD_ERR_INTERNAL;
+        HYD_ERR_POP(status, "No number of  binaries to spawn\n");
+    }
+    
+    new_pg->num_downstream = target_procs;
+    new_pg->total_proc_count = target_procs;
+    
 
     HYD_exec_alloc(&new_pg->exec_list);
-    new_pg->exec_list->exec[0] = MPL_strdup(target_binary);
-    new_pg->exec_list->exec[1] = NULL;
-    new_pg->exec_list->proc_count = 1;
+    for(i = 0; i < target_procs; ++i){
+        new_pg->exec_list->exec[i] = MPL_strdup(target_binary);
+    }
+    new_pg->exec_list->exec[i] = NULL;
+    new_pg->exec_list->proc_count = target_procs;
 
     /*  Fill new_pg node_list */
     new_pg->node_count = mpiexec_params.global_node_count;
@@ -841,9 +847,8 @@ static HYD_status control_cb(int fd, HYD_dmx_event_t events, void *userp)
         close(fd);
         goto fn_exit;
     }
-    /*HYD_PRINT(stdout, "Recieved some command from downstream\n");*/
+
     if (cmd.type == MPX_CMD_TYPE__PMI_BARRIER_IN) {
-        HYD_PRINT(stdout, "Recieved a barrier in from %d\n", &cmd.u.barrier_in.pgid);
         MPL_HASH_FIND_INT(mpiexec_pg_hash, &cmd.u.barrier_in.pgid, pg);
 
         status = mpiexec_pmi_barrier(pg);
@@ -963,8 +968,6 @@ static HYD_status control_cb(int fd, HYD_dmx_event_t events, void *userp)
                 HYD_ERR_POP(status, "error reading data\n");
                 HYD_ASSERT(!closed, status);
 
-                /*                HYD_PRINT(stdout, "mpiexec got %s\n", buf);*/
-
                 int mcmd_num_args = 0;
                 char *ip = buf, *nip = buf;
                 for(; nip; ++mcmd_num_args){
@@ -980,14 +983,12 @@ static HYD_status control_cb(int fd, HYD_dmx_event_t events, void *userp)
                     nip = strchr(ip, '\n');
                     if(nip){
                         *nip = '\0';
-                        /*HYD_PRINT(stdout, "token: %s\n", ip);*/
                         mcmd_args[i] = MPL_strdup(ip);
                         ip = nip + 1;
                     }
                 }
-                --mcmd_num_args; /* */
+                --mcmd_num_args;
                 mcmd_args[mcmd_num_args] = NULL;
-                /* HYD_PRINT(stdout, "Saving %d lines\n", mcmd_num_args); */
 
                 do_spawn(fd, pg, mcmd_args, mcmd_num_args);
     }
@@ -1119,8 +1120,6 @@ int main(int argc, char **argv)
     args[i++] = HYD_str_from_int(mpiexec_params.usize);
     args[i++] = NULL;
 
-    HYD_PRINT(stdout, "exec list is %p\n", pg->exec_list);
-    HYD_PRINT(stdout, "(pre main bstrap setup) port_range = %s\n", mpiexec_params.port_range);
     status =
         HYD_bstrap_setup(mpiexec_params.base_path, mpiexec_params.launcher,
                          mpiexec_params.launcher_exec, pg->node_count, pg->node_list, -1,
@@ -1132,8 +1131,6 @@ int main(int argc, char **argv)
     HYD_ERR_POP(status, "error setting up the boostrap proxies\n");
 
     HYD_str_free_list(args);
-
-    HYD_PRINT(stdout, "exec list is %p\n", pg->exec_list);
 
     HYD_MALLOC(pg->downstream.kvcache, void **, pg->num_downstream * sizeof(void *), status);
     HYD_MALLOC(pg->downstream.kvcache_size, int *, pg->num_downstream * sizeof(int), status);
@@ -1255,7 +1252,6 @@ int main(int argc, char **argv)
         }
     }
 
-    HYD_PRINT(stdout, "About to start freeing things, beware!\n");
     /* cleanup memory allocations to keep valgrind happy */
     status = HYD_bstrap_finalize(mpiexec_params.launcher);
     HYD_ERR_POP(status, "error finalizing bstrap\n");
