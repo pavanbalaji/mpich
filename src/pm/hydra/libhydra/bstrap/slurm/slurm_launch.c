@@ -61,7 +61,7 @@ HYD_status HYDI_bstrap_slurm_launch(const char *hostname, const char *launch_exe
     }
                         
 
-    status = HYD_spawn(targs, NULL, fd_stdin, fd_stdout, fd_stderr, pid, -1);
+    status = HYD_spawn(targs, 0, NULL, fd_stdin, fd_stdout, fd_stderr, pid, -1);
     HYD_ERR_POP(status, "create process returned error\n");
 
  fn_exit:
