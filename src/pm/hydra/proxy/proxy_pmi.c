@@ -128,7 +128,7 @@ HYD_status proxy_process_pmi_cb(int fd, HYD_dmx_event_t events, void *userp)
         for (i = 0; args[i]; i++) {
             HYD_MALLOC(hash, struct proxy_kv_hash *, sizeof(struct proxy_kv_hash), status);
             hash->key = MPL_strdup(strtok(args[i], "="));
-            hash->val = MPL_strdup(strtok(NULL, "="));
+            hash->val = MPL_strdup(strchr(args[i], '\0') + 1);
             MPL_HASH_ADD_STR(pmi_args, key, hash);
         }
 
