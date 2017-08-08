@@ -3,14 +3,14 @@
  *  (C) 2010 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-#include "hydra_bstrap_slurm.h"
+#include "hydra_bstrap_rsh.h"
 #include "hydra_str.h"
 #include "hydra_err.h"
 #include "hydra_fs.h"
 #include "hydra_spawn.h"
 
 
-HYD_status HYDI_bstrap_slurm_launch(const char *hostname, const char *launch_exec, char **args,
+HYD_status HYDI_bstrap_rsh_launch(const char *hostname, const char *launch_exec, char **args,
                                   int *fd_stdin, int *fd_stdout, int *fd_stderr, int *pid,
                                                                     int debug)
 {
@@ -27,27 +27,15 @@ HYD_status HYDI_bstrap_slurm_launch(const char *hostname, const char *launch_exe
     if (launch_exec)
 	lexec = MPL_strdup(launch_exec);
     if (lexec == NULL)
-	lexec = HYD_find_full_path("srun");
+	lexec = HYD_find_full_path("rsh");
     if (lexec == NULL)
-	lexec = MPL_strdup("/usr/bin/srun");
+	lexec = MPL_strdup("/usr/bin/rsh");
     HYD_ASSERT(lexec, status);
 
     idx = 0;
     targs[idx++] = MPL_strdup(lexec);
 
-    targs[idx++] = MPL_strdup("-N");
-    targs[idx++] = MPL_strdup("1");
-
-    targs[idx++] = MPL_strdup("-n");
-    targs[idx++] = MPL_strdup("1");
-
-    targs[idx++] = MPL_strdup("--nodelist");
     targs[idx++] = MPL_strdup(hostname);
-
-    /* Force srun to ignore stdin to avoid issues with
-     * unexpected files open on fd 0 */
-    targs[idx++] = MPL_strdup("--input");
-    targs[idx++] = MPL_strdup("none");
 
     /* Fill in the remaining arguments */
     /* We do not need to create a quoted version of the string for
