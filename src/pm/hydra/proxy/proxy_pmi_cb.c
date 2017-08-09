@@ -553,6 +553,53 @@ static HYD_status fn_abort(int fd, struct proxy_kv_hash *pmi_args)
   fn_exit:
     HYD_FUNC_EXIT();
     return status;
+  fn_fail:
+    goto fn_exit;
+}
+
+static struct HYD_string_stash stash;
+
+int spawn_report_fd = -1;
+
+static HYD_status fn_spawn(int fd, struct proxy_kv_hash *pmi_args){
+    HYD_status status = HYD_SUCCESS;
+    int sent, closed;
+    struct proxy_kv_hash *hash, *tmp;
+    char *totspawns = NULL, *spawnssofar = NULL, *upstream_string = NULL;
+    struct MPX_cmd cmd;
+    HYD_FUNC_ENTER();
+
+    MPL_HASH_ITER(hh, pmi_args, hash, tmp){
+        HYD_STRING_STASH(stash, MPL_strdup(hash->key), status);
+        HYD_STRING_STASH(stash, MPL_strdup("="), status);
+        HYD_STRING_STASH(stash, MPL_strdup(hash->val), status);
+        HYD_STRING_STASH(stash, MPL_strdup("\n"), status);
+        if(!strcmp(hash->key, "totspawns"))
+            totspawns = hash->val;
+        if(!strcmp(hash->key, "spawnssofar"))
+            spawnssofar = hash->val;
+    }
+    HYD_STRING_SPIT(stash, upstream_string, status);
+
+    if(totspawns && spawnssofar && !strcmp(totspawns, spawnssofar)){
+        MPL_VG_MEM_INIT(&cmd, sizeof(cmd));
+        cmd.type = MPX_CMD_TYPE__PMI_SPAWN;
+        cmd.data_len = strlen(upstream_string);
+
+        status = HYD_sock_write(proxy_params.root.upstream_fd, &cmd, sizeof(cmd), &sent, &closed,
+                                HYD_SOCK_COMM_TYPE__BLOCKING); 
+        HYD_ERR_POP(status, "error sending cmd upstream\n");
+        HYD_ASSERT(!closed, status);
+        status = HYD_sock_write(proxy_params.root.upstream_fd, upstream_string, strlen(upstream_string), &sent, &closed, 
+                                HYD_SOCK_COMM_TYPE__BLOCKING);
+        HYD_ERR_POP(status, "error sending cmd upstream\n");
+        HYD_ASSERT(!closed, status);
+    }
+
+    spawn_report_fd = fd;
+  fn_exit:
+    HYD_FUNC_EXIT();
+    return status;
 
   fn_fail:
     goto fn_exit;
@@ -569,6 +616,7 @@ static struct proxy_pmi_handle pmi_handlers[] = {
     {"get_universe_size", fn_get_usize},
     {"finalize", fn_finalize},
     {"abort", fn_abort},
+    {"spawn", fn_spawn},
     {"\0", NULL}
 };
 

@@ -166,6 +166,22 @@ HYD_status proxy_upstream_control_cb(int fd, HYD_dmx_event_t events, void *userp
         status = cmd_bcast_non_root(fd, cmd, (void **) &buf);
         HYD_ERR_POP(status, "error forwarding cmd downstream\n");
 
+        struct HYD_string_stash stash;
+        HYD_STRING_STASH_INIT(stash);
+        for(i = 0; i < cmd.data_len; ++i){
+            if(buf[i] <= ' '){
+                HYD_STRING_STASH(stash, MPL_strdup("\\"), status);
+                HYD_STRING_STASH(stash, HYD_str_from_int((int) buf[i]), status);
+            }else{
+                char tmp = buf[i + 1];
+                buf[i + 1] = '\0';
+                HYD_STRING_STASH(stash, MPL_strdup(buf+i), status);
+                buf[i + 1] = tmp;
+            }
+        }
+        char *ptmp;
+        HYD_STRING_SPIT(stash, ptmp, status);
+
         status =
             proxy_pmi_kvcache_out(cmd.u.kvcache.num_blocks, (int *) buf,
                                   (char *) (buf + 2 * cmd.u.kvcache.num_blocks * sizeof(int)),
@@ -186,6 +202,23 @@ HYD_status proxy_upstream_control_cb(int fd, HYD_dmx_event_t events, void *userp
             HYD_ERR_POP(status, "error writing command\n");
             HYD_ASSERT(!closed, status);
         }
+    }else if(cmd.type == MPX_CMD_TYPE__SPAWN_OUT) {
+        struct HYD_string_stash stash;
+        char *cmd_str;
+        HYD_STRING_STASH_INIT(stash);
+        HYD_STRING_STASH(stash, MPL_strdup("cmd=spawn_result rc="), status);
+        HYD_STRING_STASH(stash, HYD_str_from_int(cmd.u.spawn_result.status), status);
+        HYD_STRING_STASH(stash, MPL_strdup("\n"), status);
+        HYD_STRING_SPIT(stash, cmd_str, status);
+
+        int n;
+        do {
+	    n = (int)write( spawn_report_fd, cmd_str, strlen(cmd_str));
+	} while (n == -1 && errno == EINTR);
+        HYD_ERR_POP(status, "error writing PMI line\n");
+
+        MPL_free(cmd_str);
+        spawn_report_fd = -1;
     }
 
   fn_exit:

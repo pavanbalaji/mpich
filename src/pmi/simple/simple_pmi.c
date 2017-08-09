@@ -154,6 +154,7 @@ int PMI_Init( int *spawned )
 
     /* If size, rank, and debug are not set from a communication port,
        use the environment */
+
     if (notset) {
 	if ( ( p = getenv( "PMI_SIZE" ) ) )
 	    PMI_size = atoi( p );
@@ -203,10 +204,12 @@ int PMI_Init( int *spawned )
 
     /* FIXME: This is something that the PM should tell the process,
        rather than deliver it through the environment */
-    if ( ( p = getenv( "PMI_SPAWNED" ) ) )
+
+    if ( ( p = getenv( "PMI_SPAWNED" ) ) ){
 	PMI_spawned = atoi( p );
-    else
-	PMI_spawned = 0;
+    }else{
+        PMI_spawned = 0;
+    }
     if (PMI_spawned)
 	*spawned = 1;
     else
@@ -694,6 +697,7 @@ int PMI_Spawn_multiple(int count,
     }
 
     PMIU_readline( PMI_fd, buf, PMIU_MAXLINE );
+
     PMIU_parse_keyvals( buf ); 
     PMIU_getval( "cmd", cmd, PMIU_MAXLINE );
     if ( strncmp( cmd, "spawn_result", PMIU_MAXLINE ) != 0 ) {
@@ -711,7 +715,7 @@ int PMI_Spawn_multiple(int count,
 	    return PMI_FAIL;
 	}
     }
-    
+
     PMIU_Assert(errors != NULL);
     if (PMIU_getval( "errcodes", tempbuf, PMIU_MAXLINE )) {
         num_errcodes_found = 0;

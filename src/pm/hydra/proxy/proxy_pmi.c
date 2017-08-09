@@ -83,8 +83,8 @@ HYD_status proxy_process_pmi_cb(int fd, HYD_dmx_event_t events, void *userp)
             delim = " ";
         }
         else if (!strncmp(pmi_stash, "mcmd=", strlen("mcmd="))) {
-            if (count < strlen("endcmd") ||
-                strncmp(&pmi_stash[count - strlen("endcmd")], "endcmd", strlen("endcmd"))) {
+            if (count < strlen("endcmd\n") ||
+                strncmp(&pmi_stash[count - strlen("endcmd\n")], "endcmd\n", strlen("endcmd\n"))) {
                 /* if we reached the end of the buffer we read and did
                  * not yet get a full comamnd, wait till we get at
                  * least one more byte */
@@ -128,7 +128,7 @@ HYD_status proxy_process_pmi_cb(int fd, HYD_dmx_event_t events, void *userp)
         for (i = 0; args[i]; i++) {
             HYD_MALLOC(hash, struct proxy_kv_hash *, sizeof(struct proxy_kv_hash), status);
             hash->key = MPL_strdup(strtok(args[i], "="));
-            hash->val = MPL_strdup(strtok(NULL, "="));
+            hash->val = MPL_strdup(strchr(args[i], '\0') + 1);
             MPL_HASH_ADD_STR(pmi_args, key, hash);
         }
 

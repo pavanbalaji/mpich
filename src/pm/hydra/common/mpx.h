@@ -25,6 +25,7 @@ enum MPX_cmd_type {
     MPX_CMD_TYPE__KVCACHE_OUT,
     MPX_CMD_TYPE__PMI_PROCESS_MAPPING,
     MPX_CMD_TYPE__SIGNAL,
+    MPX_CMD_TYPE__SPAWN_OUT,
 
     /* downstream to upstream */
     MPX_CMD_TYPE__PMI_BARRIER_IN,
@@ -33,6 +34,7 @@ enum MPX_cmd_type {
     MPX_CMD_TYPE__KVCACHE_IN,
     MPX_CMD_TYPE__PID,
     MPX_CMD_TYPE__EXITCODE,
+    MPX_CMD_TYPE__PMI_SPAWN,
 };
 
 struct MPX_cmd {
@@ -78,6 +80,10 @@ struct MPX_cmd {
             int proxy_id;
             int pgid;
         } exitcodes;
+
+        struct {
+            int status;
+        } spawn_result;
     } u;
 };
 

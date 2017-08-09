@@ -83,6 +83,7 @@ extern int *n_proxy_pids;
 extern int **exitcodes;
 extern int **exitcode_node_ids;
 extern int *n_proxy_exitcodes;
+extern int spawn_report_fd;
 
 HYD_status proxy_upstream_control_cb(int fd, HYD_dmx_event_t events, void *userp);
 HYD_status proxy_downstream_control_cb(int fd, HYD_dmx_event_t events, void *userp);
