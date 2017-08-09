@@ -1,8 +1,8 @@
-@namepub_tests@namepub 2
+# @namepub_tests@namepub 2
 spawn1 1
 spawn2 1
-spawninfo1 1
-spawnminfo1 1
+# spawninfo1 1
+# spawnminfo1 1
 spawnintra 1
 spawnintra 2
 spawnargv 1
@@ -26,4 +26,4 @@ disconnect3 3
 concurrent_spawns 1
 pgroup_connect_test 4
 pgroup_intercomm_test 4
-spawn-rootargs 10
+# spawn-rootargs 10
