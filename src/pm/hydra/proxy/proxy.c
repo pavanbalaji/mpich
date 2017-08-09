@@ -582,9 +582,6 @@ int main(int argc, char **argv)
     HYD_status status = HYD_SUCCESS;
     int *nodemap, i, local_rank, tmp_ret;
 
-    /*    volatile int zero = 0;
-          while(zero == 0);*/
-    
     status = HYD_print_set_prefix_str("proxy:unset");
     HYD_ERR_POP(status, "unable to set dbg prefix\n");
 

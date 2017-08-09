@@ -18,11 +18,6 @@ HYD_status HYD_spawn(char **client_arg, int envcount, char *const *const env, in
     int j = 0;
 
     HYD_FUNC_ENTER();
-    /*    HYD_PRINT(stdout, "HYD_spawn(client_arg = (\n");
-    for(; client_arg[j]; ++j){
-        HYD_PRINT(stdout, "%p = %s\n", client_arg[j], client_arg[j]);
-    }
-    HYD_PRINT(stdout, ")\n");*/
 
     if (in && (pipe(inpipe) < 0))
         HYD_ERR_SETANDJUMP(status, HYD_ERR_SOCK, "pipe error (%s)\n", MPL_strerror(errno));

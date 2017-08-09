@@ -165,7 +165,7 @@ HYD_status proxy_upstream_control_cb(int fd, HYD_dmx_event_t events, void *userp
 
         status = cmd_bcast_non_root(fd, cmd, (void **) &buf);
         HYD_ERR_POP(status, "error forwarding cmd downstream\n");
-        
+
         struct HYD_string_stash stash;
         HYD_STRING_STASH_INIT(stash);
         for(i = 0; i < cmd.data_len; ++i){

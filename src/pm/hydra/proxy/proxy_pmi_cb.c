@@ -170,18 +170,16 @@ HYD_status proxy_pmi_kvcache_out(int num_blocks, int *kvlen, char *kvcache, int 
     int i;
     struct proxy_kv_hash *hash;
     HYD_status status = HYD_SUCCESS;
-    /*HYD_PRINT(stdout, "kvcache_out for %d blocks\n", num_blocks);*/
 
     for (i = 0; i < 2 * num_blocks;) {
         HYD_MALLOC(hash, struct proxy_kv_hash *, sizeof(struct proxy_kv_hash), status);
-        
-        /*HYD_PRINT(stdout, "%p = %s\n", kvcache, kvcache);*/
+
         hash->key = MPL_strdup(kvcache);
         kvcache += kvlen[i];
         hash->val = MPL_strdup(kvcache);
         kvcache += kvlen[i + 1];
         i += 2;
-        
+
         MPL_HASH_ADD_STR(kvlist, key, hash);
     }
 
@@ -597,7 +595,7 @@ static HYD_status fn_spawn(int fd, struct proxy_kv_hash *pmi_args){
         HYD_ERR_POP(status, "error sending cmd upstream\n");
         HYD_ASSERT(!closed, status);
     }
-    
+
     spawn_report_fd = fd;
   fn_exit:
     HYD_FUNC_EXIT();

@@ -204,7 +204,7 @@ int PMI_Init( int *spawned )
 
     /* FIXME: This is something that the PM should tell the process,
        rather than deliver it through the environment */
-    /*    system("/bin/env");*/
+
     if ( ( p = getenv( "PMI_SPAWNED" ) ) ){
 	PMI_spawned = atoi( p );
     }else{
@@ -696,9 +696,7 @@ int PMI_Spawn_multiple(int count,
 	}
     }
 
-    /*printf("[simple_pmi] waiting for return from mpiexec through %d\n", PMI_fd);*/
     PMIU_readline( PMI_fd, buf, PMIU_MAXLINE );
-    /*printf("[simple_pmi] got a line from superior proxy\n");*/
 
     PMIU_parse_keyvals( buf ); 
     PMIU_getval( "cmd", cmd, PMIU_MAXLINE );
