@@ -245,7 +245,7 @@ static HYD_status find_launcher(void)
     /* if there was an RMK set, see if we can use that as a launcher
      * as well */
     if (mpiexec_params.rmk)
-        if (HYD_bstrap_query_avail(mpiexec_params.rmk))
+        if (HYD_bstrap_query_avail(mpiexec_params.rmk) && !mpiexec_params.launcher)
             mpiexec_params.launcher = MPL_strdup(mpiexec_params.rmk);
 
     /* fallback to the default launcher */
