@@ -12,5 +12,6 @@
 HYD_status HYD_find_in_path(const char *execname, char **path);
 char *HYD_getcwd(void);
 char *HYD_find_full_path(const char *execname);
+char *HYD_find_base_path(const char *execname);
 
 #endif /* HYDRA_FS_H_INCLUDED */
