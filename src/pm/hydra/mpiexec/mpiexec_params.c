@@ -929,33 +929,7 @@ HYD_status mpiexec_get_parameters(char **t_argv)
     /***** AUTO-DETECT/COMPUTE PARAMETERS ****/
 
     /* Get the base path */
-    /* Find the last '/' in the executable name */
-    post = MPL_strdup(progname);
-    loc = strrchr(post, '/');
-    if (!loc) { /* If there is no path */
-        mpiexec_params.base_path = NULL;
-        status = HYD_find_in_path(progname, &mpiexec_params.base_path);
-        HYD_ERR_POP(status, "error while searching for executable in the user path\n");
-    }
-    else {      /* There is a path */
-        *(++loc) = 0;
-
-        /* Check if its absolute or relative */
-        if (post[0] != '/') {   /* relative */
-            tmp[0] = HYD_getcwd();
-            tmp[1] = MPL_strdup("/");
-            tmp[2] = MPL_strdup(post);
-            tmp[3] = NULL;
-            status = HYD_str_alloc_and_join(tmp, &mpiexec_params.base_path);
-            HYD_ERR_POP(status, "unable to join strings\n");
-            HYD_str_free_list(tmp);
-        }
-        else {  /* absolute */
-            mpiexec_params.base_path = MPL_strdup(post);
-        }
-    }
-    MPL_free(post);
-
+    mpiexec_params.base_path = HYD_find_base_path(progname);
 
     /***** DEFAULT PARAMETERS ****/
 

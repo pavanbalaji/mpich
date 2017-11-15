@@ -180,3 +180,44 @@ char *HYD_find_full_path(const char *execname)
   fn_fail:
     goto fn_exit;
 }
+
+char *HYD_find_base_path(const char *execname)
+{
+    char *post = NULL, *loc, *basepath = NULL;
+    HYD_status status = HYD_SUCCESS;
+    char *tmp[HYD_NUM_TMP_STRINGS];
+
+    HYD_FUNC_ENTER();
+
+    post = MPL_strdup(execname);
+    loc = strrchr(post, '/');
+    if (!loc) {
+        status = HYD_find_in_path(execname, &basepath);
+        HYD_ERR_POP(status, "error while searching for executable in the user path\n");
+    }
+    else {
+        *(++loc) = 0;
+        /* Check if it is absolute or relative */
+        if (post[0] != '/') { /* relative */
+            tmp[0] = HYD_getcwd();
+            tmp[1] = MPL_strdup("/");
+            tmp[2] = MPL_strdup(post);
+            tmp[3] = NULL;
+            status = HYD_str_alloc_and_join(tmp, &basepath);
+            HYD_ERR_POP(status, "unable to join strings\n");
+            HYD_str_free_list(tmp);
+        }
+        else { /* absolute */
+            basepath = MPL_strdup(post);
+        }
+    }
+
+  fn_exit:
+    if(post)
+        MPL_free(post);
+    HYD_FUNC_EXIT();
+    return basepath;
+
+  fn_fail:
+    goto fn_exit;
+}
