@@ -7,6 +7,16 @@
 #include "hydra_sock.h"
 #include "hydra_err.h"
 
+HYD_status HYD_sock_init()
+{
+    return HYD_SUCCESS;
+}
+
+void HYD_sock_finalize()
+{
+    return;
+}
+
 HYD_status HYD_sock_listen_on_port(int *listen_fd, uint16_t port)
 {
     struct sockaddr_in sa;

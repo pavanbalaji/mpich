@@ -740,6 +740,8 @@ int main(int argc, char **argv)
 
     HYD_FUNC_ENTER();
 
+    HYD_sock_init();
+
     status = HYD_print_set_prefix_str("mpiexec");
     HYD_ERR_POP(status, "unable to set dbg prefix\n");
 
@@ -1086,6 +1088,8 @@ int main(int argc, char **argv)
         MPL_free(mpiexec_params.outfile_pattern);
     if (mpiexec_params.errfile_pattern)
         MPL_free(mpiexec_params.errfile_pattern);
+
+    HYD_sock_finalize();
 
   fn_exit:
     HYD_FUNC_EXIT();

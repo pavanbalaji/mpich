@@ -588,6 +588,8 @@ int main(int argc, char **argv)
     HYD_status status = HYD_SUCCESS;
     int *nodemap, i, local_rank, tmp_ret;
 
+    HYD_sock_init();
+
     status = HYD_print_set_prefix_str("proxy:unset");
     HYD_ERR_POP(status, "unable to set dbg prefix\n");
 
@@ -854,6 +856,8 @@ int main(int argc, char **argv)
 
     if (proxy_params.all.pmi_process_mapping)
         MPL_free(proxy_params.all.pmi_process_mapping);
+
+    HYD_sock_finalize();
 
   fn_exit:
     return status;

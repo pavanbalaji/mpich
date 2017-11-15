@@ -332,6 +332,8 @@ int main(int argc, char **argv)
     char dbg_prefix[2 * HYD_MAX_HOSTNAME_LEN];
     HYD_status status = HYD_SUCCESS;
 
+    HYD_sock_init();
+
     status = HYD_print_set_prefix_str("bstrap:unset");
     HYD_ERR_POP(status, "unable to set dbg prefix\n");
 
@@ -368,6 +370,8 @@ int main(int argc, char **argv)
         status = HYD_dmx_wait_for_event(-1);
         HYD_ERR_POP(status, "error sending proxy ID upstream\n");
     }
+
+    HYD_sock_finalize();
 
   fn_exit:
     return status;
