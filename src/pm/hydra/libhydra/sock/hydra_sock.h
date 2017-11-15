@@ -14,6 +14,8 @@ enum HYD_sock_comm_flag {
     HYD_SOCK_COMM_TYPE__BLOCKING = 1
 };
 
+HYD_status HYD_sock_init();
+void HYD_sock_finalize();
 HYD_status HYD_sock_listen_on_port(int *listen_fd, uint16_t port);
 HYD_status HYD_sock_listen_on_any_port(int *listen_fd, uint16_t * port);
 HYD_status HYD_sock_listen_on_port_range(int *listen_fd, const char *port_range, uint16_t * port);

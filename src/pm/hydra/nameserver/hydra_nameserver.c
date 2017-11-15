@@ -277,6 +277,8 @@ int main(int argc, char **argv)
     int listen_fd;
     HYD_status status = HYD_SUCCESS;
 
+    HYD_sock_init();
+
     status = HYD_print_set_prefix_str("nameserver");
     HYD_ERR_POP(status, "unable to initialize debugging\n");
 
@@ -313,6 +315,8 @@ int main(int argc, char **argv)
         status = HYD_dmx_wait_for_event(-1);
         HYD_ERR_POP(status, "demux engine error waiting for event\n");
     }
+
+    HYD_sock_finalize();
 
   fn_exit:
     return status;
