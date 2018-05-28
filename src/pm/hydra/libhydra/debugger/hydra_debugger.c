@@ -52,10 +52,10 @@ HYD_status HYD_dbg_setup_procdesc(int process_count, struct HYD_exec * exec_list
             exec_proc_count = 0;
         }
 
-        MPIR_proctable[i].host_name = node_list[i].hostname;
+        MPIR_proctable[i].host_name = node_list[node_id].hostname;
         node_core_count++;
 
-        if (node_core_count == node_list[i].core_count) {
+        if (node_core_count == node_list[node_id].core_count) {
             node_id++;
             node_core_count = 0;
 
