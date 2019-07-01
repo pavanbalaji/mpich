@@ -78,6 +78,17 @@ cvars:
         handoff
         trylock
 
+    - name        : MPIR_CVAR_CH4_ARB_PROGRESS
+      category    : CH4
+      type        : int
+      default     : 0
+      class       : device
+      verbosity   : MPI_T_VERBOSITY_USER_BASIC
+      scope       : MPI_T_SCOPE_ALL_EQ
+      description : >-
+        Allows for a arbiter to perform global progress across
+        multiple runtime systems.
+
 === END_MPI_T_CVAR_INFO_BLOCK ===
 */
 
@@ -87,6 +98,10 @@ cvars:
    PMI2_Job_GetId. */
 #define MPIDI_MAX_JOBID_LEN PMI2_MAX_VALLEN
 #endif
+
+#ifdef HAVE_ARB
+int MPIDI_arb_handle;
+#endif /* HAVE_ARB */
 
 static int choose_netmod(void);
 static const char *get_mt_model_name(int mt);
@@ -205,6 +220,13 @@ static int set_runtime_configurations(void)
 #endif
     return mpi_errno;
 }
+
+#ifdef HAVE_ARB
+static void arb_progress_hook(void)
+{
+    MPIDI_Progress_test(MPIDI_PROGRESS_ALL);
+}
+#endif /* HAVE_ARB */
 
 int MPID_Init(int *argc, char ***argv, int requested, int *provided, int *has_args, int *has_env)
 {
@@ -447,6 +469,17 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided, int *has_ar
         /* Use the minimum tag_bits from the netmod and shmod */
         MPIR_Process.tag_bits = MPL_MIN(shm_tag_bits, nm_tag_bits);
     }
+
+#ifdef HAVE_ARB
+    if (MPIR_CVAR_CH4_ARB_PROGRESS) {
+        arb_info_s info;
+        info.requested_version = 1;
+        info.progress_fn = arb_progress_hook;
+        info.registration_notification = NULL;
+        info.myname = "MPICH";
+        arb_register(&info, &MPIDI_arb_handle);
+    }
+#endif /* HAVE_ARB */
 
     /* Call any and all MPID_Init type functions */
     MPIR_Err_init();

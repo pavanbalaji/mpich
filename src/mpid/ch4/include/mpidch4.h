@@ -11,6 +11,11 @@
 #ifndef MPIDCH4_H_INCLUDED
 #define MPIDCH4_H_INCLUDED
 
+#ifdef HAVE_ARB
+#include <arb.h>
+extern int MPIDI_arb_handle;
+#endif /* HAVE_ARB */
+
 /* We need to define the static inlines right away to avoid
  * any implicit prototype generation and subsequent warnings
  * This allows us to make ADI up calls from within a direct

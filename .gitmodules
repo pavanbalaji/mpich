@@ -10,3 +10,6 @@
 [submodule "src/mpid/ch4/netmod/ucx/ucx"]
 	path = src/mpid/ch4/netmod/ucx/ucx
 	url = https://github.com/pmodels/ucx
+[submodule "src/arb"]
+	path = src/arb
+	url = git@github.com:pmodels/arb.git

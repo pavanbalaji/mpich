@@ -71,6 +71,12 @@ MPL_STATIC_INLINE_PREFIX int MPIDI_Progress_test(int flags)
         }
     }
 #endif
+
+#ifdef HAVE_ARB
+    if (MPIR_CVAR_CH4_ARB_PROGRESS)
+        arb_progress(MPIDI_arb_handle);
+#endif
+
     MPID_THREAD_CS_EXIT(VCI, MPIDI_global.vci_lock);
 
   fn_exit:

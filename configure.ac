@@ -1224,6 +1224,45 @@ if test "$enable_izem" != "no" && test "$enable_izem" != "none"; then
 fi
 
 
+# ARB
+AC_ARG_WITH([arb-prefix],
+            [AS_HELP_STRING([[--with-arb-prefix[=DIR]]],
+                            [use the ARB library installed in DIR,
+                             rather than the one included in src/arb.  Pass
+                             "embedded" to force usage of the ARB source
+                             distributed with MPICH.])],
+            [],dnl action-if-given
+            [with_arb_prefix=embedded]) dnl action-if-not-given
+arbsrcdir=""
+AC_SUBST([arbsrcdir])
+arblibdir=""
+AC_SUBST([arblibdir])
+arblib=""
+AC_SUBST([arblib])
+if test "$with_arb_prefix" = "no" -o "$with_arb_prefix" = "none" ; then
+    :
+elif test "$with_arb_prefix" = "embedded" ; then
+    # no need for libtool versioning when embedding ARB
+    PAC_CONFIG_SUBDIR_ARGS([src/arb],[],[],[AC_MSG_ERROR(ARB configure failed)])
+    PAC_APPEND_FLAG([-I${master_top_builddir}/src/arb/src], [CPPFLAGS])
+    PAC_APPEND_FLAG([-I${use_top_srcdir}/src/arb/src], [CPPFLAGS])
+
+    arbsrcdir="src/arb"
+    arblib="src/arb/libarb.la"
+    AC_DEFINE([HAVE_ARB],[1],[Defined when ARB is enabled])
+else
+    # The user specified an already-installed ARB; just sanity check, don't
+    # subconfigure it
+    AS_IF([test -s "${with_arb_prefix}/src/arb_config.h"],
+          [:],[AC_MSG_ERROR([the ARB installation in "${with_arb_prefix}" appears broken])])
+    PAC_APPEND_FLAG([-I${with_arb_prefix}/include],[CPPFLAGS])
+    PAC_PREPEND_FLAG([-larb],[WRAPPER_LIBS])
+    PAC_APPEND_FLAG([-L${with_arb_prefix}/lib],[WRAPPER_LDFLAGS])
+    arblibdir="-L${with_arb_prefix}/lib"
+    AC_DEFINE([HAVE_ARB],[1],[Defined when ARB is enabled])
+fi
+
+
 # Set NEEDSPLIB to yes if link commands need both -l$MPILIBNAME
 # and -lp$MPILIBNAME.
 NEEDSPLIB=yes
