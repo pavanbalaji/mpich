@@ -184,7 +184,6 @@ static int type_struct(int count,
         return MPII_Type_zerolen(newtype);
     }
 
-    new_dtp->max_contig_blocks = 0;
     for (i = 0; i < count; i++) {
         int is_builtin = (HANDLE_IS_BUILTIN(oldtype_array[i]));
         MPI_Aint tmp_lb, tmp_ub, tmp_true_lb, tmp_true_ub;
@@ -210,8 +209,6 @@ static int type_struct(int count,
             tmp_true_ub = tmp_ub;
 
             size += tmp_el_sz * blocklength_array[i];
-
-            new_dtp->max_contig_blocks++;
         } else {
             MPIR_Datatype_get_ptr(oldtype_array[i], old_dtp);
 
@@ -228,8 +225,6 @@ static int type_struct(int count,
             tmp_true_ub = tmp_ub + (old_dtp->true_ub - old_dtp->ub);
 
             size += old_dtp->size * blocklength_array[i];
-
-            new_dtp->max_contig_blocks += old_dtp->max_contig_blocks * blocklength_array[i];
         }
 
         /* element size and type */
