@@ -63,7 +63,7 @@ int MPIR_Type_blockindexed(int count,
     new_dtp->contents = NULL;
     new_dtp->flattened = NULL;
 
-    new_dtp->typerep = NULL;
+    new_dtp->typerep.handle = NULL;
 
     is_builtin = (HANDLE_IS_BUILTIN(oldtype));
 
@@ -156,11 +156,11 @@ int MPIR_Type_blockindexed(int count,
 
     if (dispinbytes) {
         mpi_errno = MPIR_Typerep_create_hindexed_block(count, blocklength, displacement_array,
-                                                       oldtype, &new_dtp->typerep);
+                                                       oldtype, new_dtp);
         MPIR_ERR_CHECK(mpi_errno);
     } else {
         mpi_errno = MPIR_Typerep_create_indexed_block(count, blocklength, displacement_array,
-                                                      oldtype, &new_dtp->typerep);
+                                                      oldtype, new_dtp);
         MPIR_ERR_CHECK(mpi_errno);
     }
 

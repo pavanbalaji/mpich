@@ -59,7 +59,7 @@ int MPIR_Type_vector(int count,
     new_dtp->contents = NULL;
     new_dtp->flattened = NULL;
 
-    new_dtp->typerep = NULL;
+    new_dtp->typerep.handle = NULL;
 
     is_builtin = (HANDLE_IS_BUILTIN(oldtype));
 
@@ -134,12 +134,10 @@ int MPIR_Type_vector(int count,
     }
 
     if (strideinbytes) {
-        mpi_errno =
-            MPIR_Typerep_create_hvector(count, blocklength, stride, oldtype, &new_dtp->typerep);
+        mpi_errno = MPIR_Typerep_create_hvector(count, blocklength, stride, oldtype, new_dtp);
         MPIR_ERR_CHECK(mpi_errno);
     } else {
-        mpi_errno =
-            MPIR_Typerep_create_vector(count, blocklength, stride, oldtype, &new_dtp->typerep);
+        mpi_errno = MPIR_Typerep_create_vector(count, blocklength, stride, oldtype, new_dtp);
         MPIR_ERR_CHECK(mpi_errno);
     }
 

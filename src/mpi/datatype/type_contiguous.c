@@ -56,7 +56,7 @@ int MPIR_Type_contiguous(int count, MPI_Datatype oldtype, MPI_Datatype * newtype
     new_dtp->contents = NULL;
     new_dtp->flattened = NULL;
 
-    new_dtp->typerep = NULL;
+    new_dtp->typerep.handle = NULL;
 
     is_builtin = (HANDLE_IS_BUILTIN(oldtype));
 
@@ -111,7 +111,7 @@ int MPIR_Type_contiguous(int count, MPI_Datatype oldtype, MPI_Datatype * newtype
             new_dtp->max_contig_blocks = count * old_dtp->max_contig_blocks;
     }
 
-    mpi_errno = MPIR_Typerep_create_contig(count, oldtype, &new_dtp->typerep);
+    mpi_errno = MPIR_Typerep_create_contig(count, oldtype, new_dtp);
     MPIR_ERR_CHECK(mpi_errno);
 
     *newtype = new_dtp->handle;
