@@ -139,13 +139,11 @@ static int type_struct(int count,
 {
     int mpi_errno = MPI_SUCCESS;
     int i, old_are_contig = 1, definitely_not_contig = 0;
-    int found_sticky_lb = 0, found_sticky_ub = 0, found_true_lb = 0,
-        found_true_ub = 0, found_el_type = 0, found_lb = 0, found_ub = 0;
+    int found_true_lb = 0, found_true_ub = 0, found_el_type = 0, found_lb = 0, found_ub = 0;
     MPI_Aint el_sz = 0;
     MPI_Aint size = 0;
     MPI_Datatype el_type = MPI_DATATYPE_NULL;
-    MPI_Aint true_lb_disp = 0, true_ub_disp = 0, sticky_lb_disp = 0,
-        sticky_ub_disp = 0, lb_disp = 0, ub_disp = 0;
+    MPI_Aint true_lb_disp = 0, true_ub_disp = 0, lb_disp = 0, ub_disp = 0;
 
     MPIR_Datatype *new_dtp;
 
@@ -252,26 +250,6 @@ static int type_struct(int count,
             }
         }
 
-        /* keep lowest sticky lb */
-        if ((oldtype_array[i] == MPI_LB) || (!is_builtin && old_dtp->has_sticky_lb)) {
-            if (!found_sticky_lb) {
-                found_sticky_lb = 1;
-                sticky_lb_disp = tmp_lb;
-            } else if (sticky_lb_disp > tmp_lb) {
-                sticky_lb_disp = tmp_lb;
-            }
-        }
-
-        /* keep highest sticky ub */
-        if ((oldtype_array[i] == MPI_UB) || (!is_builtin && old_dtp->has_sticky_ub)) {
-            if (!found_sticky_ub) {
-                found_sticky_ub = 1;
-                sticky_ub_disp = tmp_ub;
-            } else if (sticky_ub_disp < tmp_ub) {
-                sticky_ub_disp = tmp_ub;
-            }
-        }
-
         /* keep lowest lb/true_lb and highest ub/true_ub
          *
          * note: checking for contiguity at the same time, to avoid
@@ -326,26 +304,22 @@ static int type_struct(int count,
     new_dtp->builtin_element_size = el_sz;
     new_dtp->basic_type = el_type;
 
-    new_dtp->has_sticky_lb = found_sticky_lb;
     new_dtp->true_lb = true_lb_disp;
-    new_dtp->lb = (found_sticky_lb) ? sticky_lb_disp : lb_disp;
+    new_dtp->lb = lb_disp;
 
-    new_dtp->has_sticky_ub = found_sticky_ub;
     new_dtp->true_ub = true_ub_disp;
-    new_dtp->ub = (found_sticky_ub) ? sticky_ub_disp : ub_disp;
+    new_dtp->ub = ub_disp;
 
     new_dtp->alignsize = MPII_Type_struct_alignsize(count, oldtype_array, displacement_array);
 
     new_dtp->extent = new_dtp->ub - new_dtp->lb;
-    if ((!found_sticky_lb) && (!found_sticky_ub)) {
-        /* account for padding */
-        MPI_Aint epsilon = (new_dtp->alignsize > 0) ?
-            new_dtp->extent % ((MPI_Aint) (new_dtp->alignsize)) : 0;
+    /* account for padding */
+    MPI_Aint epsilon = (new_dtp->alignsize > 0) ?
+        new_dtp->extent % ((MPI_Aint) (new_dtp->alignsize)) : 0;
 
-        if (epsilon) {
-            new_dtp->ub += ((MPI_Aint) (new_dtp->alignsize) - epsilon);
-            new_dtp->extent = new_dtp->ub - new_dtp->lb;
-        }
+    if (epsilon) {
+        new_dtp->ub += ((MPI_Aint) (new_dtp->alignsize) - epsilon);
+        new_dtp->extent = new_dtp->ub - new_dtp->lb;
     }
 
     new_dtp->size = size;
