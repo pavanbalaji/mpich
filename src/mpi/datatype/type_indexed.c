@@ -38,7 +38,6 @@ int MPIR_Type_indexed(int count,
     MPI_Aint el_sz, el_ct, old_ct, old_sz;
     MPI_Aint old_lb, old_ub, old_extent, old_true_lb, old_true_ub;
     MPI_Aint min_lb = 0, max_ub = 0, eff_disp;
-    MPI_Datatype el_type;
 
     MPIR_Datatype *new_dtp;
 
@@ -79,7 +78,6 @@ int MPIR_Type_indexed(int count,
         el_sz = MPIR_Datatype_get_basic_size(oldtype);
         old_sz = el_sz;
         el_ct = 1;
-        el_type = oldtype;
 
         old_lb = 0;
         old_true_lb = 0;
@@ -90,7 +88,7 @@ int MPIR_Type_indexed(int count,
 
         MPIR_Assign_trunc(new_dtp->alignsize, el_sz, MPI_Aint);
         new_dtp->builtin_element_size = el_sz;
-        new_dtp->basic_type = el_type;
+        new_dtp->basic_type = oldtype;
     } else {
         /* user-defined base type (oldtype) */
         MPIR_Datatype *old_dtp;
@@ -103,7 +101,6 @@ int MPIR_Type_indexed(int count,
         el_sz = old_dtp->builtin_element_size;
         old_sz = old_dtp->size;
         el_ct = old_dtp->n_builtin_elements;
-        el_type = old_dtp->basic_type;
 
         old_lb = old_dtp->lb;
         old_true_lb = old_dtp->true_lb;
@@ -114,7 +111,7 @@ int MPIR_Type_indexed(int count,
 
         new_dtp->alignsize = old_dtp->alignsize;
         new_dtp->builtin_element_size = (MPI_Aint) el_sz;
-        new_dtp->basic_type = el_type;
+        new_dtp->basic_type = old_dtp->basic_type;
     }
 
     /* find the first nonzero blocklength element */
