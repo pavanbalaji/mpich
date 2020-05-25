@@ -376,7 +376,7 @@ int MPIR_Type_struct(int count,
 
         int real_count = 0;
         for (int i = 0; i < count; i++) {
-            if (oldtype_array[i] != MPI_LB || oldtype_array[i] != MPI_UB) {
+            if (oldtype_array[i] != MPI_LB && oldtype_array[i] != MPI_UB) {
                 real_blocklength_array[real_count] = blocklength_array[i];
                 real_displacement_array[real_count] = displacement_array[i];
                 real_oldtype_array[real_count] = oldtype_array[i];
