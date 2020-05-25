@@ -61,10 +61,7 @@ static MPI_Aint MPII_Type_struct_alignsize(int count,
     MPI_Aint max_alignsize = 0, tmp_alignsize, derived_alignsize = 0;
 
     for (i = 0; i < count; i++) {
-        /* shouldn't be called with an LB or UB, but we'll handle it nicely */
-        if (oldtype_array[i] == MPI_LB || oldtype_array[i] == MPI_UB)
-            continue;
-        else if (HANDLE_IS_BUILTIN(oldtype_array[i])) {
+        if (HANDLE_IS_BUILTIN(oldtype_array[i])) {
             tmp_alignsize = MPIR_Datatype_get_basic_size(oldtype_array[i]);
 
 #ifdef HAVE_DOUBLE_ALIGNMENT_EXCEPTION
@@ -196,8 +193,8 @@ static int type_struct(int count,
         MPIR_Datatype *old_dtp = NULL;
         int old_is_contig;
 
-        /* Interpreting typemap to not include 0 blklen things, including
-         * MPI_LB and MPI_UB. -- Rob Ross, 10/31/2005
+        /* Interpreting typemap to not include 0 blklen things. -- Rob
+         * Ross, 10/31/2005
          */
         if (blocklength_array[i] == 0)
             continue;
@@ -236,18 +233,16 @@ static int type_struct(int count,
         }
 
         /* element size and type */
-        if (oldtype_array[i] != MPI_LB && oldtype_array[i] != MPI_UB) {
-            if (found_el_type == 0) {
-                el_sz = tmp_el_sz;
-                el_type = tmp_el_type;
-                found_el_type = 1;
-            } else if (el_sz != tmp_el_sz) {
-                el_sz = -1;
-                el_type = MPI_DATATYPE_NULL;
-            } else if (el_type != tmp_el_type) {
-                /* Q: should we set el_sz = -1 even though the same? */
-                el_type = MPI_DATATYPE_NULL;
-            }
+        if (found_el_type == 0) {
+            el_sz = tmp_el_sz;
+            el_type = tmp_el_type;
+            found_el_type = 1;
+        } else if (el_sz != tmp_el_sz) {
+            el_sz = -1;
+            el_type = MPI_DATATYPE_NULL;
+        } else if (el_type != tmp_el_type) {
+            /* Q: should we set el_sz = -1 even though the same? */
+            el_type = MPI_DATATYPE_NULL;
         }
 
         /* keep lowest lb/true_lb and highest ub/true_ub
@@ -255,44 +250,42 @@ static int type_struct(int count,
          * note: checking for contiguity at the same time, to avoid
          *       yet another pass over the arrays
          */
-        if (oldtype_array[i] != MPI_UB && oldtype_array[i] != MPI_LB) {
-            if (!found_true_lb) {
-                found_true_lb = 1;
-                true_lb_disp = tmp_true_lb;
-            } else if (true_lb_disp > tmp_true_lb) {
-                /* element starts before previous */
-                true_lb_disp = tmp_true_lb;
-                definitely_not_contig = 1;
-            }
+        if (!found_true_lb) {
+            found_true_lb = 1;
+            true_lb_disp = tmp_true_lb;
+        } else if (true_lb_disp > tmp_true_lb) {
+            /* element starts before previous */
+            true_lb_disp = tmp_true_lb;
+            definitely_not_contig = 1;
+        }
 
-            if (!found_lb) {
-                found_lb = 1;
-                lb_disp = tmp_lb;
-            } else if (lb_disp > tmp_lb) {
-                /* lb before previous */
-                lb_disp = tmp_lb;
-                definitely_not_contig = 1;
-            }
+        if (!found_lb) {
+            found_lb = 1;
+            lb_disp = tmp_lb;
+        } else if (lb_disp > tmp_lb) {
+            /* lb before previous */
+            lb_disp = tmp_lb;
+            definitely_not_contig = 1;
+        }
 
-            if (!found_true_ub) {
-                found_true_ub = 1;
-                true_ub_disp = tmp_true_ub;
-            } else if (true_ub_disp < tmp_true_ub) {
-                true_ub_disp = tmp_true_ub;
-            } else {
-                /* element ends before previous ended */
-                definitely_not_contig = 1;
-            }
+        if (!found_true_ub) {
+            found_true_ub = 1;
+            true_ub_disp = tmp_true_ub;
+        } else if (true_ub_disp < tmp_true_ub) {
+            true_ub_disp = tmp_true_ub;
+        } else {
+            /* element ends before previous ended */
+            definitely_not_contig = 1;
+        }
 
-            if (!found_ub) {
-                found_ub = 1;
-                ub_disp = tmp_ub;
-            } else if (ub_disp < tmp_ub) {
-                ub_disp = tmp_ub;
-            } else {
-                /* ub before previous */
-                definitely_not_contig = 1;
-            }
+        if (!found_ub) {
+            found_ub = 1;
+            ub_disp = tmp_ub;
+        } else if (ub_disp < tmp_ub) {
+            ub_disp = tmp_ub;
+        } else {
+            /* ub before previous */
+            definitely_not_contig = 1;
         }
 
         MPIR_Datatype_is_contig(oldtype_array[i], &old_is_contig);
