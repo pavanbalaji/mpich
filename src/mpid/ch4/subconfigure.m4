@@ -280,7 +280,7 @@ fi
 
 AC_ARG_ENABLE([ch4-am-only],
               AS_HELP_STRING([--ch4-am-only],[forces AM-only communication]),
-              [],[enable_ch4_am_only=no])
+              [],[enable_ch4_am_only=yes])
 
 if test "${enable_ch4_am_only}" = "yes"; then
     AC_DEFINE(MPIDI_ENABLE_AM_ONLY, 1, [Enables AM-only communication])

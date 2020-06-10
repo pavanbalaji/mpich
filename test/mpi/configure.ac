@@ -163,7 +163,7 @@ AC_ARG_ENABLE(romio,
 AC_ARG_ENABLE(spawn,
 	[AC_HELP_STRING([--enable-spawn],
 		[Enable tests of the dynamic process parts of MPI-2 (default)])],,
-	[enable_spawn=yes])
+	[enable_spawn=no])
 
 AC_ARG_ENABLE(rma,
 	[AC_HELP_STRING([--enable-rma],[Enable tests of the one sided parts of MPI-2 (default)])],,
